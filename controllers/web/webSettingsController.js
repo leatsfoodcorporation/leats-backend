@@ -1,17 +1,12 @@
 const { prisma } = require("../../config/database");
 const { uploadToS3, deleteFromS3, getS3Object } = require("../../utils/web/uploadsS3");
-
-const getBaseUrl = (req) => {
-  const protocol = req.get("x-forwarded-proto") || req.protocol;
-  const host = req.get("host");
-  return `${protocol}://${host}`;
-};
+const { getProxyImageUrl } = require("../../utils/common/imageProxy");
 
 // Get current web settings
 const getWebSettings = async (req, res) => {
   try {
     let settings = await prisma.webSettings.findFirst();
-    
+
     // If no settings exist, create default
     if (!settings) {
       settings = await prisma.webSettings.create({
@@ -19,18 +14,10 @@ const getWebSettings = async (req, res) => {
       });
     }
 
-    // Use proxy endpoints instead of presigned URLs to avoid CORS issues
-    const baseUrl = getBaseUrl(req);
-    
-    // Add version parameter based on updatedAt to bust cache when logo changes
-    const version = settings.updatedAt ? new Date(settings.updatedAt).getTime() : Date.now();
-    
-    const logoUrl = settings.logoUrl
-      ? `${baseUrl}/api/web/web-settings/logo?v=${version}`
-      : null;
-    const faviconUrl = settings.faviconUrl
-      ? `${baseUrl}/api/web/web-settings/favicon?v=${version}`
-      : null;
+    // Use the same /image/* proxy pattern as product images so the URL is
+    // frontend-relative (rewritten by Next.js) and stays same-origin in the browser.
+    const logoUrl = settings.logoUrl ? getProxyImageUrl(settings.logoUrl) : null;
+    const faviconUrl = settings.faviconUrl ? getProxyImageUrl(settings.faviconUrl) : null;
 
     const response = {
       id: settings.id,
@@ -89,16 +76,11 @@ const uploadLogo = async (req, res) => {
       });
     }
 
-    // Generate proxy URL for response
-    const baseUrl = getBaseUrl(req);
-    const logoVersion = settings.updatedAt ? new Date(settings.updatedAt).getTime() : Date.now();
-    const logoProxyUrl = `${baseUrl}/api/web/web-settings/logo?v=${logoVersion}`;
-
     res.json({
       success: true,
       message: "Logo uploaded successfully",
       data: {
-        logoUrl: logoProxyUrl, // Proxy URL for immediate use
+        logoUrl: getProxyImageUrl(logoKey), // /image/<s3-key> — same pattern as product images
         logoKey: logoKey, // S3 key stored in database
       },
     });
@@ -145,16 +127,11 @@ const uploadFavicon = async (req, res) => {
       });
     }
 
-    // Generate proxy URL for response
-    const baseUrl = getBaseUrl(req);
-    const faviconVersion = settings.updatedAt ? new Date(settings.updatedAt).getTime() : Date.now();
-    const faviconProxyUrl = `${baseUrl}/api/web/web-settings/favicon?v=${faviconVersion}`;
-
     res.json({
       success: true,
       message: "Favicon uploaded successfully",
       data: {
-        faviconUrl: faviconProxyUrl, // Proxy URL for immediate use
+        faviconUrl: getProxyImageUrl(faviconKey), // /image/<s3-key> — same pattern as product images
         faviconKey: faviconKey, // S3 key stored in database
       },
     });
