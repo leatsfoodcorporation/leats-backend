@@ -6,6 +6,7 @@ const { updateStockAfterOrder } = require("../../utils/inventory/stockUpdateServ
 const { createOnlineTransaction } = require("../../utils/finance/transactionService");
 const { sendOrderPlacedNotification } = require("../../utils/notification/sendNotification");
 const { isPincodeServiceable } = require("../../utils/online/serviceability");
+const { sendToAdmin } = require("../../utils/socket/socketHandler");
 
 /**
  * Resolve the final shipping charge for an order.
@@ -737,6 +738,9 @@ const createCODOrder = async (req, res) => {
 
     console.log(`✅ COD order created: ${result.orderNumber}`);
 
+    // Real-time push to admin dashboard
+    sendToAdmin("new_order", { orderNumber: result.orderNumber, type: "online", paymentMethod: "cod" });
+
     return res.status(201).json({
       success: true,
       requiresPayment: false,
@@ -1113,6 +1117,9 @@ const confirmOrder = async (req, res) => {
     }
 
     console.log(`✅ Online order confirmed: ${result.orderNumber}`);
+
+    // Real-time push to admin dashboard
+    sendToAdmin("new_order", { orderNumber: result.orderNumber, type: "online", paymentMethod });
 
     res.status(201).json({
       success: true,

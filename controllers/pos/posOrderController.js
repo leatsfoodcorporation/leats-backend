@@ -3,6 +3,7 @@ const { updateStockAfterOrder } = require("../../utils/inventory/stockUpdateServ
 const { getFinancialPeriod } = require("../../utils/finance/financialPeriod");
 const { createPOSTransaction } = require("../../utils/finance/transactionService");
 const { generateInvoiceNumber } = require("../../utils/order/invoiceGenerator");
+const { sendToAdmin } = require("../../utils/socket/socketHandler");
 
 /**
  * Update customer analytics (total orders, total spent, last order date)
@@ -164,6 +165,9 @@ const createPOSOrder = async (req, res) => {
     });
 
     console.log(`✅ POS Order created: ${order.orderNumber}`);
+
+    // Real-time push to admin dashboard
+    sendToAdmin("new_order", { orderNumber: order.orderNumber, type: "pos" });
 
     // Create transaction record
     try {
