@@ -1,6 +1,7 @@
 const { prisma } = require('../../config/database');
 const { generateInvoicePDF, getCompanyData } = require('../../utils/order/invoicePDFGenerator');
 const { sendOrderStatusUpdate, sendOutForDeliveryNotification } = require('../../utils/notification/sendNotification');
+const { sendToAdmin } = require('../../utils/socket/socketHandler');
 
 /**
  * Get all online orders with filters and pagination
@@ -384,6 +385,9 @@ const updateOrderStatus = async (req, res) => {
       console.error(`⚠️ Failed to send admin notification:`, adminNotifError.message);
     }
     */
+
+    // Real-time push to admin dashboard
+    sendToAdmin("order_status_updated", { orderId: id, orderNumber: updatedOrder.orderNumber, status });
 
     res.json({
       success: true,
