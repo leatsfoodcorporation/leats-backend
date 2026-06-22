@@ -1,6 +1,18 @@
 const { prisma } = require("../../config/database");
 const { uploadToS3, deleteFromS3, getPresignedUrl } = require("../../utils/purchase/uploadsS3");
 const { updateStockAfterPurchase } = require("../../utils/purchase/stockUpdateHelper");
+const { convertToBaseUOM } = require("../../utils/inventory/uomConverter");
+
+// Convert quantity to base UOM using item's availableUoms
+const getBaseQty = async (quantity, uom, itemId) => {
+  if (!itemId || !uom) return quantity;
+  try {
+    const item = await prisma.item.findUnique({ where: { id: itemId }, select: { baseUom: true, availableUoms: true } });
+    if (!item || uom === item.baseUom) return quantity;
+    const converted = convertToBaseUOM(quantity, uom, item.baseUom, item.availableUoms || []);
+    return converted !== null ? converted : quantity;
+  } catch { return quantity; }
+};
 
 // Generate Bill/GRN Number
 const generateBillNumber = async () => {
@@ -253,6 +265,12 @@ const createBill = async (req, res) => {
       }
     }
 
+    // Calculate totalQuantity in base UOM (convert grams to kg etc.)
+    let computedTotalQuantity = 0;
+    for (const item of parsedItems) {
+      computedTotalQuantity += await getBaseQty(parseFloat(item.quantityReceived || 0), item.uom, item.itemId);
+    }
+
     // Create bill with items
     const bill = await prisma.bill.create({
       data: {
@@ -283,7 +301,7 @@ const createBill = async (req, res) => {
         paymentDate: paymentDate ? new Date(paymentDate) : null,
         paidAmount: paymentStatus === "paid" ? parseFloat(grandTotal) : 0,
         subTotal: parseFloat(subTotal),
-        totalQuantity: parsedItems.reduce((sum, item) => sum + parseFloat(item.quantityReceived || 0), 0),
+        totalQuantity: computedTotalQuantity,
         totalDiscount: parseFloat(totalDiscount || 0),
         discount: parseFloat(discount || 0),
         discountType: discountType || "flat",
@@ -445,6 +463,12 @@ const updateBill = async (req, res) => {
       where: { billId: id },
     });
 
+    // Calculate totalQuantity in base UOM for update
+    let computedTotalQuantity = 0;
+    for (const item of parsedItems) {
+      computedTotalQuantity += await getBaseQty(parseFloat(item.quantityReceived || 0), item.uom, item.itemId);
+    }
+
     // Update bill with new items
     const bill = await prisma.bill.update({
       where: { id },
@@ -476,7 +500,7 @@ const updateBill = async (req, res) => {
         paymentDate: paymentDate ? new Date(paymentDate) : null,
         paidAmount: paymentStatus === "paid" ? parseFloat(grandTotal) : existingBill.paidAmount,
         subTotal: parseFloat(subTotal),
-        totalQuantity: parsedItems.reduce((sum, item) => sum + parseFloat(item.quantityReceived || 0), 0),
+        totalQuantity: computedTotalQuantity,
         totalDiscount: parseFloat(totalDiscount || 0),
         discount: parseFloat(discount || 0),
         discountType: discountType || "flat",
