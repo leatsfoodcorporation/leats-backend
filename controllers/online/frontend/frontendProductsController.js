@@ -203,12 +203,9 @@ const getProducts = async (req, res) => {
       }
     }
 
-    // Filter by category and subcategory
-    // For combo products: show if ANY comboItem has the filtered category
-    // For regular products: filter by main category field
+    // Filter by category at DB level so pagination works correctly
     if (category) {
-      // Don't filter at DB level for category - we'll filter in memory to handle combo products
-      // Store category for later filtering
+      where.category = category;
     }
     
     if (subCategory) where.subCategory = subCategory;
