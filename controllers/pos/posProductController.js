@@ -334,7 +334,7 @@ const updatePOSProduct = async (req, res) => {
     if (uom !== undefined) updateData.uom = uom;
     if (purchasePrice !== undefined) updateData.purchasePrice = parseFloat(purchasePrice) || 0;
     if (gstPercentage !== undefined) updateData.gstPercentage = parseFloat(gstPercentage) || 0;
-    if (lowStockAlertLevel !== undefined) updateData.lowStockAlertLevel = parseInt(lowStockAlertLevel) || 0;
+    if (lowStockAlertLevel !== undefined) updateData.lowStockAlertLevel = parseFloat(lowStockAlertLevel) || 0;
     if (status !== undefined) updateData.status = status;
     if (display !== undefined) updateData.display = display;
 

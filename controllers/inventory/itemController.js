@@ -478,7 +478,7 @@ const updateItem = async (req, res) => {
     }
 
     const quantity = existingItem.quantity;
-    const alertLevel = parseInt(lowStockAlertLevel || 0);
+    const alertLevel = parseFloat(lowStockAlertLevel || 0);
 
     // 🆕 Build availableUoms array if UOM is being changed
     const availableUoms = isUOMChangeAttempt ? buildAvailableUomsArray(finalBaseUom, finalSelectedUoms) : existingItem.availableUoms;
@@ -514,7 +514,7 @@ const updateItem = async (req, res) => {
             : existingItem.gstPercentage,
         hsnCode,
         warehouseId: warehouse,
-        openingStock: parseInt(openingStock || existingItem.openingStock),
+        openingStock: parseFloat(openingStock || existingItem.openingStock),
         lowStockAlertLevel: alertLevel,
         status: autoStatus,
         expiryDate: expiryDate ? new Date(expiryDate) : null,
