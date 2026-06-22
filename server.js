@@ -120,6 +120,9 @@ const allowedOrigins = [
   "http://localhost:5000",
   "http://localhost:8081", // Expo web dev server
   "http://localhost:19006", // Alternative Expo web port
+  "https://leats.in",
+  "https://www.leats.in",
+  "https://backend.leats.in",
   "https://monolith-ecommerce.vercel.app",
   "https://monolith-ecommerce-3pwa.vercel.app",
 ].filter(Boolean).map(origin => origin.replace(/\/$/, "")); // Normalize by removing trailing slashes
@@ -174,8 +177,9 @@ app.use(session({
   resave: false,
   saveUninitialized: false,
   cookie: {
-    secure: false,
+    secure: process.env.NODE_ENV === 'production', // true on HTTPS, false on localhost
     httpOnly: true,
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax', // Allow cross-origin cookies in production
     maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
   }
 }));
