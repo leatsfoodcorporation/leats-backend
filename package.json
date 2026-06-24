@@ -12,7 +12,7 @@
     "db:studio": "prisma studio",
     "db:migrate": "prisma migrate dev",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "dev:webhook": "ngrok http --url=endlessly-adapted-shepherd.ngrok-free.app 5000"
+    "dev:webhook": "ngrok http --url=tuition-lavender-mating.ngrok-free.dev 5001"
   },
   "keywords": [
     "ecommerce",

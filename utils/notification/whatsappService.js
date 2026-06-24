@@ -37,6 +37,16 @@ const sendWhatsAppOTP = async (phoneNumber, otp) => {
       return await sendViaMetaCloudAPI(formattedPhone, otp);
     } else if (provider === 'twilio') {
       return await sendViaTwilioREST(formattedPhone, otp);
+    } else if (provider === 'mock') {
+      const messageId = `wamid.mock_${Date.now()}`;
+      console.log(`🧪 [Mock-WhatsApp-Log] OTP for ${formattedPhone}: ${otp}. Registered with messageId: ${messageId}`);
+      try {
+        const { whatsappTracker } = require('./whatsappTracker');
+        whatsappTracker.register(messageId, formattedPhone, otp);
+      } catch (trackerErr) {
+        console.error('⚠️ Failed to register message with WhatsApp tracker:', trackerErr.message);
+      }
+      return { success: true, messageId };
     } else {
       throw new Error(`Unsupported WhatsApp provider: ${provider}`);
     }
@@ -70,7 +80,7 @@ const sendViaMetaCloudAPI = async (phoneNumber, otp) => {
     template: {
       name: templateName,
       language: {
-        code: "en_US"
+        code: "en"
       },
       components: [
         {
