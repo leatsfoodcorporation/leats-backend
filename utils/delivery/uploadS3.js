@@ -159,6 +159,7 @@ const getPresignedUrl = async (key, expiresIn = 3600) => {
 };
 
 module.exports = {
+  uploadToS3,
   uploadProfilePhoto,
   uploadDocument,
   uploadProfilePhotoToS3,

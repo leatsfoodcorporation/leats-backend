@@ -6,12 +6,15 @@ const {
   deleteBrand,
 } = require('../../controllers/online/brandController');
 
+const { authenticateToken } = require('../../middleware/auth');
+const { requirePermission, requireDashboardAccess } = require('../../middleware/permission');
+
 const router = express.Router();
 
-// Brand CRUD routes
+// Public GET (frontend product filter needs brands)
 router.get('/', getAllBrands);
-router.post('/', createBrand);
-router.put('/:id', updateBrand);
-router.delete('/:id', deleteBrand);
+router.post('/', authenticateToken, requirePermission('online_products', 'add'), createBrand);
+router.put('/:id', authenticateToken, requirePermission('online_products', 'edit'), updateBrand);
+router.delete('/:id', authenticateToken, requirePermission('online_products', 'delete'), deleteBrand);
 
 module.exports = router;

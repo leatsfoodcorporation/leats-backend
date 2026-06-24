@@ -1,23 +1,17 @@
 const express = require('express');
 const router = express.Router();
-const { getFaqs, getFaq, createFaq, updateFaq, deleteFaq , getActiveFaqs} = require('../../controllers/web/faqControllers');
+const { authenticateToken } = require("../../middleware/auth");
+const { requirePermission } = require("../../middleware/permission");
+const { getFaqs, getFaq, createFaq, updateFaq, deleteFaq, getActiveFaqs } = require('../../controllers/web/faqControllers');
 
-// Get active FAQs
+// Public routes (frontend website)
 router.get('/active', getActiveFaqs);
-
-// List all FAQs
 router.get('/', getFaqs);
-
-// Get single FAQ
 router.get('/:id', getFaq);
 
-// Create FAQ
-router.post('/', createFaq);
-
-// Update FAQ
-router.put('/:id', updateFaq);
-
-// Delete FAQ
-router.delete('/:id', deleteFaq);
+// Dashboard routes - protected
+router.post('/', authenticateToken, requirePermission('web_policies', 'add'), createFaq);
+router.put('/:id', authenticateToken, requirePermission('web_policies', 'edit'), updateFaq);
+router.delete('/:id', authenticateToken, requirePermission('web_policies', 'delete'), deleteFaq);
 
 module.exports = router;

@@ -1,35 +1,22 @@
 const express = require("express");
+const { authenticateToken } = require('../../middleware/auth');
+const { requirePermission } = require('../../middleware/permission');
+
 const router = express.Router();
 const couponController = require("../../controllers/online/couponController");
 
-// Create a new coupon
-router.post("/", couponController.createCoupon);
-
-// Get all coupons
-router.get("/", couponController.getAllCoupons);
-
-// Validate coupon
-router.post("/validate", couponController.validateCoupon);
-
-// Get available coupons for user (must be before /:id route)
+// Public routes (frontend website needs these)
 router.get("/available", couponController.getAvailableCoupons);
-
-// Get promotional coupons for header display (must be before /:id route)
 router.get("/promotional", couponController.getPromotionalCoupons);
-
-// Apply coupon (record usage)
+router.post("/validate", couponController.validateCoupon);
 router.post("/apply", couponController.applyCoupon);
 
-// Get coupon statistics (must be before /:id route)
-router.get("/:id/stats", couponController.getCouponStats);
-
-// Get coupon by ID
-router.get("/:id", couponController.getCouponById);
-
-// Update coupon
-router.put("/:id", couponController.updateCoupon);
-
-// Delete coupon
-router.delete("/:id", couponController.deleteCoupon);
+// Dashboard routes - protected
+router.get("/", authenticateToken, requirePermission('coupons', 'view'), couponController.getAllCoupons);
+router.get("/:id/stats", authenticateToken, requirePermission('coupons', 'view'), couponController.getCouponStats);
+router.get("/:id", authenticateToken, requirePermission('coupons', 'view'), couponController.getCouponById);
+router.post("/", authenticateToken, requirePermission('coupons', 'add'), couponController.createCoupon);
+router.put("/:id", authenticateToken, requirePermission('coupons', 'edit'), couponController.updateCoupon);
+router.delete("/:id", authenticateToken, requirePermission('coupons', 'delete'), couponController.deleteCoupon);
 
 module.exports = router;

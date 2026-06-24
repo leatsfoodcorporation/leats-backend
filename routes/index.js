@@ -6,6 +6,12 @@ const imageProxyRoutes = require('./common/imageProxyRoutes');
 // Auth routes
 const authRoutes = require('./auth/authRoutes');
 
+// Employee management routes
+const employeeRoutes = require('./employee/employeeRoutes');
+const roleRoutes = require('./employee/roleRoutes');
+const departmentRoutes = require('./employee/departmentRoutes');
+const employeeAuthRoutes = require('./employee/employeeAuthRoutes');
+
 // Dashboard routes
 const dashboardRoutes = require('./dashboard/dashboardRoutes');
 
@@ -154,6 +160,12 @@ router.use('/init', initRoutes);
 
 // Dashboard routes
 router.use('/dashboard', dashboardRoutes);
+
+// Employee management routes
+router.use('/employees', employeeRoutes);
+router.use('/roles', roleRoutes);
+router.use('/departments', departmentRoutes);
+router.use('/auth/employee', employeeAuthRoutes);
 
 // Email routes
 router.use('/email/dashboard/settings/email-configuration', emailConfigRoutes);

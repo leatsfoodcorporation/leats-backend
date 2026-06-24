@@ -1,5 +1,7 @@
 const express = require("express");
 const router = express.Router();
+const { authenticateToken } = require("../../middleware/auth");
+const { requirePermission } = require("../../middleware/permission");
 const { upload } = require("../../utils/web/uploadsS3");
 const {
   getAllPageSEO,
@@ -9,19 +11,13 @@ const {
   generatePageSEO,
 } = require("../../controllers/web/pageSEOController");
 
-// Get all page SEO settings
+// Public routes (frontend website)
 router.get("/", getAllPageSEO);
-
-// Get single page SEO by path (encoded)
 router.get("/page/:path", getPageSEOByPath);
 
-// Generate SEO using Groq AI
-router.post("/generate", generatePageSEO);
-
-// Create or update page SEO (with optional OG image upload)
-router.post("/", upload.single("ogImage"), savePageSEO);
-
-// Delete page SEO
-router.delete("/:id", deletePageSEO);
+// Dashboard routes - protected
+router.post("/generate", authenticateToken, requirePermission('web_seo', 'edit'), generatePageSEO);
+router.post("/", authenticateToken, requirePermission('web_seo', 'edit'), upload.single("ogImage"), savePageSEO);
+router.delete("/:id", authenticateToken, requirePermission('web_seo', 'delete'), deletePageSEO);
 
 module.exports = router;

@@ -1214,14 +1214,91 @@ const sendToPartner = async (partnerId, notification, data = {}) => {
   }
 };
 
+/**
+ * Send notification to a specific employee (by employee ID)
+ */
+const sendToEmployee = async (employeeId, notification, data = {}) => {
+  try {
+    const employee = await prisma.employee.findUnique({
+      where: { id: employeeId },
+      select: { id: true, name: true, fcmTokens: true },
+    });
+
+    if (!employee || !employee.fcmTokens || employee.fcmTokens.length === 0) {
+      return { success: false, sent: 0, total: 0 };
+    }
+
+    let sent = 0;
+    const failedTokens = [];
+
+    for (const tokenObj of employee.fcmTokens) {
+      const result = await sendToDevice(tokenObj.token, notification, data);
+      if (result.success) {
+        sent++;
+      } else {
+        failedTokens.push(tokenObj.token);
+      }
+    }
+
+    // Remove failed tokens
+    if (failedTokens.length > 0) {
+      const validTokens = employee.fcmTokens.filter(t => !failedTokens.includes(t.token));
+      await prisma.employee.update({
+        where: { id: employeeId },
+        data: { fcmTokens: validTokens },
+      });
+    }
+
+    return { success: sent > 0, sent, total: employee.fcmTokens.length };
+  } catch (error) {
+    console.error(`❌ Error sending to employee ${employeeId}:`, error.message);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * Send notification to ALL employees who have a specific module permission
+ * Example: sendToEmployeesByPermission('online_orders', notification, data)
+ */
+const sendToEmployeesByPermission = async (module, notification, data = {}) => {
+  try {
+    // Get all active employees with roles
+    const employees = await prisma.employee.findMany({
+      where: { status: 'active', isActive: true },
+      select: { id: true, fcmTokens: true, role: { select: { permissions: true } } },
+    });
+
+    let totalSent = 0;
+
+    for (const employee of employees) {
+      // Check if employee's role has the required module permission
+      const permissions = employee.role?.permissions || [];
+      const hasModule = permissions.some(p => p.module === module && Array.isArray(p.actions) && p.actions.includes('view'));
+
+      if (hasModule && employee.fcmTokens && employee.fcmTokens.length > 0) {
+        const result = await sendToEmployee(employee.id, notification, data);
+        totalSent += result.sent || 0;
+      }
+    }
+
+    console.log(`📡 Permission notification [${module}]: sent to ${totalSent} device(s)`);
+    return { success: true, sent: totalSent };
+  } catch (error) {
+    console.error(`❌ Error sending permission notification [${module}]:`, error.message);
+    return { success: false, error: error.message };
+  }
+};
+
 module.exports = {
   sendToDevice,
   sendToUser,
   sendToAdmin,
   sendToPartner,
+  sendToEmployee,
   sendToAllAdmins,
   sendToAllUsers,
   sendToAllDevices,
+  sendToEmployeesByPermission,
   sendLowStockAlert,
   sendOrderStatusUpdate,
   sendOrderPlacedNotification,

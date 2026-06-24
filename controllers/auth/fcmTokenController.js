@@ -15,10 +15,10 @@ const saveFCMToken = async (req, res) => {
       });
     }
 
-    if (!['user', 'admin', 'partner'].includes(userType)) {
+    if (!['user', 'admin', 'partner', 'employee'].includes(userType)) {
       return res.status(400).json({
         success: false,
-        error: 'userType must be either "user", "admin", or "partner"',
+        error: 'userType must be either "user", "admin", "employee", or "partner"',
       });
     }
 
@@ -149,6 +149,12 @@ const saveFCMToken = async (req, res) => {
           totalDevices: tokens.length 
         },
       });
+    } else if (userType === 'employee') {
+      const result = await saveEmployeeFCMToken(userId, fcmToken, device, now);
+      if (!result) {
+        return res.status(404).json({ success: false, error: 'Employee not found' });
+      }
+      return res.json({ success: true, message: 'FCM token saved successfully', data: result });
     } else {
       const admin = await prisma.admin.findUnique({
         where: { id: userId },
@@ -193,10 +199,10 @@ const saveFCMToken = async (req, res) => {
       return res.json({
         success: true,
         message: 'FCM token saved successfully',
-        data: { 
-          userId: admin.id, 
+        data: {
+          userId: admin.id,
           userType: 'admin',
-          totalDevices: tokens.length 
+          totalDevices: tokens.length
         },
       });
     }
@@ -208,6 +214,56 @@ const saveFCMToken = async (req, res) => {
       message: error.message,
     });
   }
+};
+
+/**
+ * Save FCM token for employee
+ * Called internally from saveFCMToken when userType === 'employee'
+ */
+const saveEmployeeFCMToken = async (userId, fcmToken, device, now) => {
+  let employee = await prisma.employee.findUnique({
+    where: { id: userId },
+    select: { id: true, name: true, email: true, fcmTokens: true },
+  });
+
+  // If not found by ID (Google login sends User ID), find via User email
+  if (!employee) {
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { email: true } });
+    if (user) {
+      employee = await prisma.employee.findUnique({
+        where: { email: user.email },
+        select: { id: true, name: true, email: true, fcmTokens: true },
+      });
+    }
+  }
+  if (!employee) return null;
+
+  let tokens = Array.isArray(employee.fcmTokens) ? employee.fcmTokens : [];
+  tokens = tokens.filter(t => t.token !== fcmToken);
+  tokens.unshift({ token: fcmToken, device, lastUsed: now.toISOString() });
+  if (tokens.length > 10) tokens = tokens.slice(0, 10);
+
+  await prisma.employee.update({
+    where: { id: employee.id },
+    data: { fcmTokens: tokens },
+  });
+
+  console.log(`✅ FCM token saved for employee: ${employee.name} (${employee.email}) - Total devices: ${tokens.length}`);
+
+  // Also save to User table (same person — needs notifications as customer too)
+  try {
+    const linkedUser = await prisma.user.findUnique({ where: { email: employee.email }, select: { id: true, fcmTokens: true } });
+    if (linkedUser) {
+      let userTokens = Array.isArray(linkedUser.fcmTokens) ? linkedUser.fcmTokens : [];
+      userTokens = userTokens.filter(t => t.token !== fcmToken);
+      userTokens.unshift({ token: fcmToken, device, lastUsed: now.toISOString() });
+      if (userTokens.length > 10) userTokens = userTokens.slice(0, 10);
+      await prisma.user.update({ where: { id: linkedUser.id }, data: { fcmTokens: userTokens } });
+      console.log(`✅ FCM token also saved for linked user: ${employee.email}`);
+    }
+  } catch (e) { /* silent — employee-only, no linked user */ }
+
+  return { userId: employee.id, userType: 'employee', totalDevices: tokens.length };
 };
 
 /**
@@ -225,10 +281,10 @@ const removeFCMToken = async (req, res) => {
       });
     }
 
-    if (!['user', 'admin', 'partner'].includes(userType)) {
+    if (!['user', 'admin', 'partner', 'employee'].includes(userType)) {
       return res.status(400).json({
         success: false,
-        error: 'userType must be either "user", "admin", or "partner"',
+        error: 'userType must be either "user", "admin", "employee", or "partner"',
       });
     }
 
@@ -263,31 +319,27 @@ const removeFCMToken = async (req, res) => {
       }
     } else if (userType === 'partner') {
       if (fcmToken) {
-        // Remove specific token
-        const partner = await prisma.deliveryPartner.findUnique({
-          where: { id: userId },
-          select: { fcmTokens: true },
-        });
-
+        const partner = await prisma.deliveryPartner.findUnique({ where: { id: userId }, select: { fcmTokens: true } });
         if (partner) {
-          const tokens = Array.isArray(partner.fcmTokens) ? partner.fcmTokens : [];
-          const updatedTokens = tokens.filter(t => t.token !== fcmToken);
-
-          await prisma.deliveryPartner.update({
-            where: { id: userId },
-            data: { fcmTokens: updatedTokens },
-          });
-
-          console.log(`✅ FCM token removed for partner: ${userId} - Remaining devices: ${updatedTokens.length}`);
+          const updatedTokens = (Array.isArray(partner.fcmTokens) ? partner.fcmTokens : []).filter(t => t.token !== fcmToken);
+          await prisma.deliveryPartner.update({ where: { id: userId }, data: { fcmTokens: updatedTokens } });
+          console.log(`✅ FCM token removed for partner: ${userId}`);
         }
       } else {
-        // Remove all tokens
-        await prisma.deliveryPartner.update({
-          where: { id: userId },
-          data: { fcmTokens: [] },
-        });
-
+        await prisma.deliveryPartner.update({ where: { id: userId }, data: { fcmTokens: [] } });
         console.log(`✅ All FCM tokens removed for partner: ${userId}`);
+      }
+    } else if (userType === 'employee') {
+      if (fcmToken) {
+        const employee = await prisma.employee.findUnique({ where: { id: userId }, select: { fcmTokens: true } });
+        if (employee) {
+          const updatedTokens = (Array.isArray(employee.fcmTokens) ? employee.fcmTokens : []).filter(t => t.token !== fcmToken);
+          await prisma.employee.update({ where: { id: userId }, data: { fcmTokens: updatedTokens } });
+          console.log(`✅ FCM token removed for employee: ${userId}`);
+        }
+      } else {
+        await prisma.employee.update({ where: { id: userId }, data: { fcmTokens: [] } });
+        console.log(`✅ All FCM tokens removed for employee: ${userId}`);
       }
     } else {
       if (fcmToken) {

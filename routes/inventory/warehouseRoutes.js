@@ -1,4 +1,7 @@
 const express = require("express");
+const { authenticateToken } = require('../../middleware/auth');
+const { requirePermission, requireDashboardAccess } = require('../../middleware/permission');
+
 const router = express.Router();
 const {
   getAllWarehouses,
@@ -7,10 +10,10 @@ const {
   updateWarehouse,
 } = require("../../controllers/inventory/warehouseController");
 
-// Warehouse routes
-router.get("/", getAllWarehouses);
-router.get("/:id", getWarehouseById);
-router.post("/", createWarehouse);
-router.put("/:id", updateWarehouse);
+// Warehouse routes — GET uses dashboardAccess (lookup data for purchase, POS, etc.)
+router.get("/", authenticateToken, requireDashboardAccess, getAllWarehouses);
+router.get("/:id", authenticateToken, requireDashboardAccess, getWarehouseById);
+router.post("/", authenticateToken, requirePermission('warehouse', 'add'), createWarehouse);
+router.put("/:id", authenticateToken, requirePermission('warehouse', 'edit'), updateWarehouse);
 
 module.exports = router;
