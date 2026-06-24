@@ -142,14 +142,11 @@ const authenticateToken = async (req, res, next) => {
     // Only check on dashboard/admin API routes — skip for shopping routes (cart, wishlist, orders, frontend)
     if (userType === 'user' && user.email) {
       const path = req.originalUrl || req.url || '';
-      const isDashboardRoute = path.includes('/api/auth/me') || path.includes('/api/auth/admin') ||
-        path.includes('/api/employees') || path.includes('/api/roles') || path.includes('/api/departments') ||
-        path.includes('/api/online/admin') || path.includes('/api/inventory') || path.includes('/api/purchase') ||
-        path.includes('/api/pos') || path.includes('/api/finance') || path.includes('/api/customer') ||
-        path.includes('/api/delivery') || path.includes('/api/web/banners') || path.includes('/api/web/faq') ||
-        path.includes('/api/web/seo') || path.includes('/api/web/policies') || path.includes('/api/web/company') ||
-        path.includes('/api/web/web-settings') || path.includes('/api/email') || path.includes('/api/settings') ||
-        path.includes('/api/dashboard') || path.includes('/api/enquiry');
+      // Skip employee check ONLY for customer shopping routes (cart, wishlist, orders, frontend)
+      const isShoppingRoute = path.includes('/api/online/cart') || path.includes('/api/online/wishlist') ||
+        path.includes('/api/online/my-orders') || path.includes('/api/online/frontend') ||
+        path.includes('/api/online/orders') || path.includes('/api/online/address');
+      const isDashboardRoute = !isShoppingRoute;
 
       if (isDashboardRoute) {
         const linkedEmployee = await prisma.employee.findUnique({
