@@ -203,10 +203,21 @@ const resetPassword = async (req, res) => {
  */
 const getEmployeeProfile = async (req, res) => {
   try {
-    const employee = await prisma.employee.findUnique({
+    let employee = await prisma.employee.findUnique({
       where: { id: req.userId },
       include: { role: true, department: true },
     });
+
+    // If not found by ID (Google login uses User ID), find via User email
+    if (!employee) {
+      const user = await prisma.user.findUnique({ where: { id: req.userId }, select: { email: true } });
+      if (user) {
+        employee = await prisma.employee.findUnique({
+          where: { email: user.email },
+          include: { role: true, department: true },
+        });
+      }
+    }
 
     if (!employee) {
       return res.status(404).json({ success: false, error: "Employee not found" });
