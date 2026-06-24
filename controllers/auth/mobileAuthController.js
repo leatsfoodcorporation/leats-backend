@@ -5,6 +5,7 @@ const { prisma } = require("../../config/database");
 const sessionManager = require("../../utils/auth/sessionManager");
 const { sendEmail: sendSMTPEmail, sendEmailWithEnv } = require("../../config/connectSMTP");
 const { sendNewUserRegistrationAlert, sendWelcomeNotification } = require("../../utils/notification/sendNotification");
+const { sendWhatsAppOTP } = require("../../utils/notification/whatsappService");
 
 // Email helper - uses SMTP configuration
 const sendEmail = async (emailData) => {
@@ -807,9 +808,10 @@ const sendOTPByPhone = async (req, res) => {
       });
     }
 
-    console.log(`✅ OTP generated for phone: ${phoneNumber}, sending to email: ${user.email}`);
+    const whatsappEnabled = process.env.WHATSAPP_ENABLED === 'true';
+    console.log(`✅ OTP generated for phone: ${phoneNumber}, dispatch options: [WhatsApp Enabled: ${whatsappEnabled}]`);
 
-    // Send OTP email
+    // Prepare OTP email data in case of fallback
     const emailData = {
       to: user.email,
       subject: "Your OTP Code - Phone Verification",
@@ -833,21 +835,31 @@ const sendOTPByPhone = async (req, res) => {
     // Send response immediately
     res.json({
       success: true,
-      message: "OTP sent to your registered email",
+      message: whatsappEnabled ? "OTP sent to your WhatsApp number" : "OTP sent to your registered email",
       data: {
         phoneNumber,
-        email: user.email.replace(/(.{2})(.*)(@.*)/, "$1***$3"), // Masked email
+        email: whatsappEnabled ? undefined : user.email.replace(/(.{2})(.*)(@.*)/, "$1***$3"), // Masked email
+        whatsappSent: whatsappEnabled,
         otpSent: true,
       },
     });
 
-    // Send email after response (non-blocking)
+    // Send dispatch after response (non-blocking)
     setImmediate(async () => {
       try {
-        await sendEmail(emailData);
-        console.log(`✅ OTP email sent to: ${user.email}`);
+        if (whatsappEnabled) {
+          const wsResult = await sendWhatsAppOTP(phoneNumber, otp);
+          if (!wsResult.success) {
+            console.log('⚠️ WhatsApp OTP dispatch failed, falling back to Email OTP');
+            await sendEmail(emailData);
+            console.log(`✅ Fallback OTP email sent to: ${user.email}`);
+          }
+        } else {
+          await sendEmail(emailData);
+          console.log(`✅ OTP email sent to: ${user.email}`);
+        }
       } catch (err) {
-        console.error("Failed to send OTP email:", err);
+        console.error("Failed to send OTP:", err);
       }
     });
   } catch (error) {

@@ -3,6 +3,7 @@ const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
 const { sendEmail: sendSMTPEmail, sendEmailWithEnv } = require("../../config/connectSMTP");
+const { sendWhatsAppOTP } = require("../../utils/notification/whatsappService");
 
 /**
  * Partner Login
@@ -904,12 +905,26 @@ const resendOTP = async (req, res) => {
       },
     });
 
-    // Send OTP via SMS or Email
+    // Send OTP via SMS/WhatsApp or Email
     if (phone) {
-      // In production, send OTP via SMS service
-      console.log(`📱 OTP for ${phone}: ${otp}`);
-      // TODO: Integrate SMS service (Twilio, AWS SNS, etc.)
-      // await sendSMS(phone, `Your OTP is: ${otp}. Valid for 10 minutes.`);
+      console.log(`📱 OTP generated for partner phone: ${phone}`);
+      const whatsappEnabled = process.env.WHATSAPP_ENABLED === 'true';
+      
+      setImmediate(async () => {
+        try {
+          if (whatsappEnabled) {
+            const wsResult = await sendWhatsAppOTP(phone, otp);
+            if (!wsResult.success) {
+              console.log('⚠️ Partner WhatsApp OTP dispatch failed, logging to console as fallback');
+              console.log(`📱 [Fallback-Log] OTP for ${phone}: ${otp}`);
+            }
+          } else {
+            console.log(`📱 [Log-Only] WhatsApp disabled. OTP for ${phone}: ${otp}`);
+          }
+        } catch (err) {
+          console.error("Failed to send partner OTP:", err);
+        }
+      });
     } else if (email) {
       // Send OTP via email
       const emailData = {
