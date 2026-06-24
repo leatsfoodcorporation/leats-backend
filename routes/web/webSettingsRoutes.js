@@ -1,5 +1,7 @@
 const express = require("express");
 const router = express.Router();
+const { authenticateToken } = require("../../middleware/auth");
+const { requirePermission } = require("../../middleware/permission");
 const { upload } = require("../../utils/web/uploadsS3");
 const {
   getWebSettings,
@@ -11,25 +13,15 @@ const {
   proxyFavicon,
 } = require("../../controllers/web/webSettingsController");
 
-// Get web settings
+// Public routes (frontend website)
 router.get("/", getWebSettings);
-
-// Proxy logo (serve image directly - avoids CORS)
 router.get("/logo", proxyLogo);
-
-// Proxy favicon (serve image directly - avoids CORS)
 router.get("/favicon", proxyFavicon);
 
-// Upload logo
-router.post("/logo", upload.single("logo"), uploadLogo);
-
-// Upload favicon
-router.post("/favicon", upload.single("favicon"), uploadFavicon);
-
-// Delete logo
-router.delete("/logo", deleteLogo);
-
-// Delete favicon
-router.delete("/favicon", deleteFavicon);
+// Dashboard routes - protected
+router.post("/logo", authenticateToken, requirePermission('web_logo', 'edit'), upload.single("logo"), uploadLogo);
+router.post("/favicon", authenticateToken, requirePermission('web_logo', 'edit'), upload.single("favicon"), uploadFavicon);
+router.delete("/logo", authenticateToken, requirePermission('web_logo', 'edit'), deleteLogo);
+router.delete("/favicon", authenticateToken, requirePermission('web_logo', 'edit'), deleteFavicon);
 
 module.exports = router;

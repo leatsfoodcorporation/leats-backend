@@ -6,6 +6,7 @@ const sessionManager = require("../../utils/auth/sessionManager");
 const { sendEmail: sendSMTPEmail, sendEmailWithEnv } = require("../../config/connectSMTP");
 const { sendNewUserRegistrationAlert, sendWelcomeNotification } = require("../../utils/notification/sendNotification");
 const { getWelcomeEmailTemplate } = require("../../utils/email/templates/welcomeEmailTemplate");
+const { getPresignedUrl } = require("../../utils/employee/uploadS3");
 
 // Email helper - uses SMTP configuration
 const sendEmail = async (emailData) => {
@@ -431,17 +432,41 @@ const login = async (req, res) => {
 
     console.log(`🔍 Login attempt with ${searchField}:`, email);
 
-    // Find user in both collections by email or phone
+    // Priority: Admin → Employee → User (employee checked before user for same-email support)
     let user = isEmail
-      ? await prisma.user.findUnique({ where: { email } })
-      : await prisma.user.findFirst({ where: { phoneNumber: email } });
-    let userType = "user";
+      ? await prisma.admin.findUnique({ where: { email } })
+      : await prisma.admin.findFirst({ where: { phoneNumber: email } });
+    let userType = "admin";
 
+    // Check for employee BEFORE user (same email can exist in both)
+    if (!user) {
+      const employee = isEmail
+        ? await prisma.employee.findUnique({
+            where: { email },
+            include: { role: { select: { id: true, name: true, permissions: true } } },
+          })
+        : await prisma.employee.findFirst({
+            where: { phone: email },
+            include: { role: { select: { id: true, name: true, permissions: true } } },
+          });
+
+      if (employee) {
+        // Only use Employee login if account is fully active
+        // If draft/unverified/suspended/inactive → fall through to User table (customer can still login)
+        if (employee.status === "active" && employee.isEmailVerified && employee.isActive) {
+          user = employee;
+          userType = "employee";
+        }
+        // else: skip employee, fall through to User table check below
+      }
+    }
+
+    // Check for user (customer) — LAST priority
     if (!user) {
       user = isEmail
-        ? await prisma.admin.findUnique({ where: { email } })
-        : await prisma.admin.findFirst({ where: { phoneNumber: email } });
-      userType = "admin";
+        ? await prisma.user.findUnique({ where: { email } })
+        : await prisma.user.findFirst({ where: { phoneNumber: email } });
+      userType = "user";
     }
 
     if (!user) {
@@ -452,15 +477,15 @@ const login = async (req, res) => {
     }
 
     // Check if user is active
-    if (!user.isActive) {
+    if (userType !== "employee" && !user.isActive) {
       return res.status(401).json({
         success: false,
         error: "Account is deactivated. Please contact administrator.",
       });
     }
 
-    // Check if email is verified (except for admins)
-    if (userType !== "admin" && !user.isVerified) {
+    // Check if email is verified (except for admins and employees — employees checked above)
+    if (userType === "user" && !user.isVerified) {
       return res.status(401).json({
         success: false,
         error: "Please verify your email before signing in. Check your inbox for the verification link.",
@@ -475,28 +500,44 @@ const login = async (req, res) => {
       });
     }
 
-    // Verify password
-    const isPasswordValid = await bcrypt.compare(password, user.password);
-    if (!isPasswordValid) {
-      return res.status(401).json({
-        success: false,
-        error: "Invalid email or password",
-      });
+    // Verify password — Employee uses User's password (same person, same password)
+    let isPasswordValid = false;
+
+    if (userType === "employee") {
+      // Try Employee's own password first (if exists)
+      if (user.password) {
+        isPasswordValid = await bcrypt.compare(password, user.password);
+      }
+      // If no match or no Employee password → try User's password (shared account)
+      if (!isPasswordValid) {
+        const linkedUser = isEmail
+          ? await prisma.user.findUnique({ where: { email } })
+          : await prisma.user.findFirst({ where: { phoneNumber: email } });
+
+        if (linkedUser && linkedUser.password) {
+          isPasswordValid = await bcrypt.compare(password, linkedUser.password);
+        }
+      }
+    } else {
+      // Admin or User — normal password check
+      if (user.password) {
+        isPasswordValid = await bcrypt.compare(password, user.password);
+      }
     }
 
-    // Update last login
+    if (!isPasswordValid) {
+      return res.status(401).json({ success: false, error: "Invalid email or password" });
+    }
+
+    // Update last login — each user type in its own table
     const updateData = { lastLogin: new Date() };
 
     if (userType === "admin") {
-      await prisma.admin.update({
-        where: { id: user.id },
-        data: updateData,
-      });
-    } else {
-      await prisma.user.update({
-        where: { id: user.id },
-        data: updateData,
-      });
+      await prisma.admin.update({ where: { id: user.id }, data: updateData });
+    } else if (userType === "employee") {
+      // Employee lastLogin handled separately in auto-transition block above
+    } else if (userType === "user") {
+      await prisma.user.update({ where: { id: user.id }, data: updateData });
     }
 
     // Generate token
@@ -516,29 +557,55 @@ const login = async (req, res) => {
 
     // Login event removed - not needed for customer sync
 
+    // Auto-transition employee verified → active on first login
+    if (userType === "employee" && user.status === "verified") {
+      await prisma.employee.update({
+        where: { id: user.id },
+        data: {
+          status: "active",
+          lastLogin: new Date(),
+          statusHistory: {
+            push: { from: "verified", to: "active", reason: "First login", changedAt: new Date().toISOString() },
+          },
+        },
+      });
+    }
+
+    // Update lastLogin for employee
+    if (userType === "employee" && user.status === "active") {
+      await prisma.employee.update({
+        where: { id: user.id },
+        data: { lastLogin: new Date() },
+      });
+    }
+
     res.json({
       success: true,
       message: "Login successful",
       data: {
-        token, // Still send in response for backward compatibility
+        token,
         user: {
           id: user.id,
           email: user.email,
           name: user.name,
           role: userType,
-          image: user.image,
-          isVerified: user.isVerified,
-          phoneNumber: user.phoneNumber,
+          image: userType === "employee" ? await getPresignedUrl(user.profilePhoto) : user.image,
+          isVerified: userType === "employee" ? user.isEmailVerified : user.isVerified,
+          phoneNumber: userType === "employee" ? user.phone : user.phoneNumber,
           address: user.address,
           city: user.city,
           state: user.state,
-          zipCode: user.zipCode,
+          zipCode: userType === "employee" ? user.pincode : user.zipCode,
           country: user.country,
           dateOfBirth: user.dateOfBirth,
           currency: userType === "admin" ? user.currency : undefined,
           companyName: userType === "admin" ? user.companyName : undefined,
           gstNumber: userType === "admin" ? user.gstNumber : undefined,
           onboardingCompleted: userType === "admin" ? user.onboardingCompleted : undefined,
+          // Employee-specific fields
+          employeeId: userType === "employee" ? user.employeeId : undefined,
+          permissions: userType === "employee" ? (user.role?.permissions || []) : undefined,
+          roleName: userType === "employee" ? (user.role?.name || "") : undefined,
         },
       },
     });
@@ -776,7 +843,21 @@ const googleCallback = async (req, res) => {
       }
     }
 
-    // Generate token
+    // Check if this user is also an Employee (same email) — login as Employee for Dashboard access
+    let employeeData = null;
+    if (!isAdmin) {
+      const linkedEmployee = await prisma.employee.findUnique({
+        where: { email },
+        include: { role: { select: { id: true, name: true, permissions: true } } },
+      });
+      if (linkedEmployee && linkedEmployee.isActive && linkedEmployee.status === "active" && linkedEmployee.isEmailVerified) {
+        employeeData = linkedEmployee;
+      }
+    }
+
+    const effectiveRole = isAdmin ? "admin" : employeeData ? "employee" : "user";
+
+    // Always use User ID for token (shopping/cart/wishlist needs User ID)
     const token = generateToken(user.id);
 
     // Track active session
@@ -795,12 +876,12 @@ const googleCallback = async (req, res) => {
       success: true,
       message: "Google authentication successful",
       data: {
-        token, // Still send for backward compatibility
+        token,
         user: {
           id: user.id,
           email: user.email,
           name: user.name,
-          role: isAdmin ? "admin" : "user",
+          role: effectiveRole,
           image: user.image,
           isVerified: user.isVerified,
           phoneNumber: user.phoneNumber,
@@ -814,6 +895,10 @@ const googleCallback = async (req, res) => {
           companyName: isAdmin ? user.companyName : undefined,
           gstNumber: isAdmin ? user.gstNumber : undefined,
           onboardingCompleted: isAdmin ? user.onboardingCompleted : undefined,
+          // Employee fields (if also an employee)
+          employeeId: employeeData?.employeeId || undefined,
+          permissions: employeeData?.role?.permissions || undefined,
+          roleName: employeeData?.role?.name || undefined,
         },
       },
     });
@@ -1115,8 +1200,8 @@ const resetPassword = async (req, res) => {
 // Get current user
 const getCurrentUser = async (req, res) => {
   try {
-    // Try to find user in users collection first
-    let user = await prisma.user.findUnique({
+    // Priority: Admin → Employee → User (same as login)
+    let user = await prisma.admin.findUnique({
       where: { id: req.userId },
       select: {
         id: true,
@@ -1134,13 +1219,49 @@ const getCurrentUser = async (req, res) => {
         zipCode: true,
         country: true,
         dateOfBirth: true,
+        currency: true,
+        companyName: true,
+        gstNumber: true,
+        onboardingCompleted: true,
+        workingHours: {
+          orderBy: {
+            day: "asc",
+          },
+        },
       },
     });
-    let userType = "user";
+    let userType = "admin";
 
-    // If not found in users, try admins collection
+    // Check Employee table
     if (!user) {
-      user = await prisma.admin.findUnique({
+      const employee = await prisma.employee.findUnique({
+        where: { id: req.userId },
+        include: { role: { select: { id: true, name: true, permissions: true } } },
+      });
+
+      if (employee) {
+        userType = "employee";
+        return res.json({
+          success: true,
+          data: {
+            id: employee.id,
+            email: employee.email,
+            name: employee.name,
+            image: await getPresignedUrl(employee.profilePhoto),
+            role: "employee",
+            isVerified: employee.isEmailVerified,
+            phoneNumber: employee.phone,
+            employeeId: employee.employeeId,
+            permissions: employee.role?.permissions || [],
+            roleName: employee.role?.name || "",
+          },
+        });
+      }
+    }
+
+    // Check User table
+    if (!user) {
+      user = await prisma.user.findUnique({
         where: { id: req.userId },
         select: {
           id: true,
@@ -1158,21 +1279,29 @@ const getCurrentUser = async (req, res) => {
           zipCode: true,
           country: true,
           dateOfBirth: true,
-          currency: true,
-          companyName: true,
-          gstNumber: true,
-          onboardingCompleted: true,
-          // TEMPORARILY HIDDEN - timezone and dateFormat
-          // timezone: true,
-          // dateFormat: true,
-          workingHours: {
-            orderBy: {
-              day: "asc",
-            },
-          },
         },
       });
-      userType = "admin";
+      userType = "user";
+
+      // Check if same email also has Employee account (Google login user who is also employee)
+      if (user) {
+        const linkedEmployee = await prisma.employee.findUnique({
+          where: { email: user.email },
+          include: { role: { select: { id: true, name: true, permissions: true } } },
+        });
+        if (linkedEmployee && linkedEmployee.isActive && linkedEmployee.status === "active" && linkedEmployee.isEmailVerified) {
+          return res.json({
+            success: true,
+            data: {
+              ...user,
+              role: "employee",
+              employeeId: linkedEmployee.employeeId,
+              permissions: linkedEmployee.role?.permissions || [],
+              roleName: linkedEmployee.role?.name || "",
+            },
+          });
+        }
+      }
     }
 
     if (!user) {
@@ -1205,34 +1334,50 @@ const logout = async (req, res) => {
     const token = req.headers.authorization?.replace("Bearer ", "");
     const { fcmToken } = req.body; // Get FCM token from request body
 
-    // Get user info before logout
-    let user = await prisma.user.findUnique({
+    // Get user info before logout — check Admin → Employee → User
+    let user = await prisma.admin.findUnique({
       where: { id: userId },
       select: { email: true, name: true, fcmTokens: true },
     });
-    let userType = "user";
+    let userType = "admin";
 
     if (!user) {
-      user = await prisma.admin.findUnique({
+      const employee = await prisma.employee.findUnique({
         where: { id: userId },
         select: { email: true, name: true, fcmTokens: true },
       });
-      userType = "admin";
+      if (employee) {
+        user = employee;
+        userType = "employee";
+      }
     }
 
-    // ✅ FIX: Remove FCM token from database on logout
+    if (!user) {
+      user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { email: true, name: true, fcmTokens: true },
+      });
+      userType = "user";
+    }
+
+    // Remove FCM token from database on logout
     if (fcmToken && user) {
       try {
         const tokens = Array.isArray(user.fcmTokens) ? user.fcmTokens : [];
         const updatedTokens = tokens.filter(t => t.token !== fcmToken);
 
-        if (userType === 'user') {
-          await prisma.user.update({
+        if (userType === 'admin') {
+          await prisma.admin.update({
+            where: { id: userId },
+            data: { fcmTokens: updatedTokens },
+          });
+        } else if (userType === 'employee') {
+          await prisma.employee.update({
             where: { id: userId },
             data: { fcmTokens: updatedTokens },
           });
         } else {
-          await prisma.admin.update({
+          await prisma.user.update({
             where: { id: userId },
             data: { fcmTokens: updatedTokens },
           });
@@ -1506,7 +1651,22 @@ const googleAuthSuccess = async (req, res) => {
       );
     }
 
-    // Generate JWT token
+    // Check if this user is also an Employee (same email)
+    let employeeData = null;
+    const isAdmin = req.user.role === "admin";
+    if (!isAdmin) {
+      const linkedEmployee = await prisma.employee.findUnique({
+        where: { email: req.user.email },
+        include: { role: { select: { id: true, name: true, permissions: true } } },
+      });
+      if (linkedEmployee && linkedEmployee.isActive && linkedEmployee.status === "active" && linkedEmployee.isEmailVerified) {
+        employeeData = linkedEmployee;
+      }
+    }
+
+    const effectiveRole = isAdmin ? "admin" : employeeData ? "employee" : "user";
+
+    // Always use User ID for token (shopping needs User ID)
     const token = generateToken(req.user.id);
 
     // Track active session
@@ -1521,19 +1681,20 @@ const googleAuthSuccess = async (req, res) => {
       path: '/'
     });
 
-    // Redirect to frontend with token (for backward compatibility)
-    const redirectUrl = `${
-      process.env.FRONTEND_URL
-    }/auth/google/success?token=${token}&user=${encodeURIComponent(
-      JSON.stringify({
-        id: req.user.id,
-        email: req.user.email,
-        name: req.user.name,
-        role: req.user.role,
-        image: req.user.image,
-        isVerified: req.user.isVerified,
-      })
-    )}`;
+    // Redirect to frontend with token
+    const userData = {
+      id: req.user.id,
+      email: req.user.email,
+      name: req.user.name,
+      role: effectiveRole,
+      image: req.user.image,
+      isVerified: req.user.isVerified,
+      employeeId: employeeData?.employeeId || undefined,
+      permissions: employeeData?.role?.permissions || undefined,
+      roleName: employeeData?.role?.name || undefined,
+    };
+
+    const redirectUrl = `${process.env.FRONTEND_URL}/auth/google/success?token=${token}&user=${encodeURIComponent(JSON.stringify(userData))}`;
 
     res.redirect(redirectUrl);
   } catch (error) {

@@ -1945,3 +1945,111 @@ model OrderScheduleSettings {
 
   @@map("order_schedule_settings")
 }
+
+// ============================================
+// EMPLOYEE MANAGEMENT & ROLES
+// ============================================
+
+model Department {
+  id          String     @id @default(auto()) @map("_id") @db.ObjectId
+  name        String     @unique
+  description String?
+  isActive    Boolean    @default(true)
+
+  employees   Employee[]
+
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@map("departments")
+}
+
+model Role {
+  id            String     @id @default(auto()) @map("_id") @db.ObjectId
+  name          String     @unique
+  description   String?
+  permissions   Json[]     @default([]) // Array of { module: "online_products", actions: ["view","add","edit","delete"] }
+  isSystemRole  Boolean    @default(false) // true for "Super Admin" — cannot delete/rename
+  isActive      Boolean    @default(true)
+
+  employees     Employee[]
+
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  @@map("roles")
+}
+
+model Employee {
+  id                      String      @id @default(auto()) @map("_id") @db.ObjectId
+  employeeId              String?     @unique // EMP-2026-001 (generated on invite)
+
+  // Login credentials
+  email                   String      @unique
+  password                String?     // Hashed (null until invited)
+  name                    String
+  phone                   String
+
+  // Email verification
+  isEmailVerified         Boolean     @default(false)
+  emailVerificationToken  String?
+  emailVerifiedAt         DateTime?
+
+  // Password reset
+  resetToken              String?
+  resetTokenExpiry        DateTime?
+
+  // Status workflow: draft → invited → verified → active → suspended / inactive
+  status                  String      @default("draft")
+  statusHistory           Json[]      @default([]) // Array of { from, to, reason, changedAt, changedBy }
+
+  // Role (dynamic permissions)
+  roleId                  String?     @db.ObjectId
+  role                    Role?       @relation(fields: [roleId], references: [id])
+
+  // Department (dynamic — admin creates)
+  departmentId            String?     @db.ObjectId
+  department              Department? @relation(fields: [departmentId], references: [id])
+
+  // Personal info
+  dateOfBirth             DateTime?
+  gender                  String?     // male, female, other
+  profilePhoto            String?     // S3 key
+
+  // Address
+  address                 String?
+  city                    String?
+  state                   String?
+  pincode                 String?
+  country                 String?     @default("India")
+
+  // Identity documents (S3 keys)
+  aadharNumber            String?
+  aadharDocument          String?     // S3 key
+  panNumber               String?
+  panDocument             String?     // S3 key
+  idProofDocument         String?     // S3 key
+
+  // Employment
+  joiningDate             DateTime?   @default(now())
+
+  // Suspension
+  suspensionReason        String?
+  suspensionNote          String?
+  suspendedAt             DateTime?
+
+  // Account
+  isActive                Boolean     @default(true)
+  lastLogin               DateTime?
+
+  // FCM Push Notification Tokens (Multi-device support)
+  fcmTokens               Json[]      @default([]) // Array of { token, device, lastUsed }
+
+  createdAt               DateTime    @default(now())
+  updatedAt               DateTime    @updatedAt
+
+  @@index([roleId])
+  @@index([departmentId])
+  @@index([status])
+  @@map("employees")
+}

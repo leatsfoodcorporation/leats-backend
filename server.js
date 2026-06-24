@@ -40,8 +40,9 @@ async function initializeApp() {
       // Auto-initialize admin user
       console.log("\n👤 Initializing admin user...");
       try {
-        const { initializeAdmin } = require("./utils/auth/initializeAdmin");
+        const { initializeAdmin, initializeSuperAdminRole } = require("./utils/auth/initializeAdmin");
         const initResult = await initializeAdmin();
+        await initializeSuperAdminRole();
         
         if (initResult.success) {
           console.log("✅ Admin initialization completed successfully");

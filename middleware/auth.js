@@ -85,6 +85,45 @@ const authenticateToken = async (req, res, next) => {
       }
     }
 
+    // Check for employee
+    if (!user) {
+      const employee = await prisma.employee.findUnique({
+        where: { id: decoded.userId || decoded.id },
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          status: true,
+          isEmailVerified: true,
+          isActive: true,
+          employeeId: true,
+          roleId: true,
+          role: {
+            select: {
+              id: true,
+              name: true,
+              permissions: true,
+            }
+          }
+        }
+      });
+
+      if (employee) {
+        user = {
+          id: employee.id,
+          email: employee.email,
+          name: employee.name,
+          isActive: employee.isActive && employee.status === 'active',
+          isVerified: employee.isEmailVerified,
+          employeeId: employee.employeeId,
+        };
+        userType = 'employee';
+        // Attach permissions for requirePermission middleware
+        req.employeePermissions = employee.role?.permissions || [];
+        req.employeeRole = employee.role;
+      }
+    }
+
     if (!user) {
       return res.status(401).json({
         success: false,
@@ -99,13 +138,43 @@ const authenticateToken = async (req, res, next) => {
       });
     }
 
+    // If User found, check if same email also has Employee account (Google login + Employee)
+    // Only check on dashboard/admin API routes — skip for shopping routes (cart, wishlist, orders, frontend)
+    if (userType === 'user' && user.email) {
+      const path = req.originalUrl || req.url || '';
+      const isDashboardRoute = path.includes('/api/auth/me') || path.includes('/api/auth/admin') ||
+        path.includes('/api/employees') || path.includes('/api/roles') || path.includes('/api/departments') ||
+        path.includes('/api/online/admin') || path.includes('/api/inventory') || path.includes('/api/purchase') ||
+        path.includes('/api/pos') || path.includes('/api/finance') || path.includes('/api/customer') ||
+        path.includes('/api/delivery') || path.includes('/api/web/banners') || path.includes('/api/web/faq') ||
+        path.includes('/api/web/seo') || path.includes('/api/web/policies') || path.includes('/api/web/company') ||
+        path.includes('/api/web/web-settings') || path.includes('/api/email') || path.includes('/api/settings') ||
+        path.includes('/api/dashboard') || path.includes('/api/enquiry');
+
+      if (isDashboardRoute) {
+        const linkedEmployee = await prisma.employee.findUnique({
+          where: { email: user.email },
+          select: {
+            id: true, employeeId: true, status: true, isActive: true, isEmailVerified: true,
+            role: { select: { id: true, name: true, permissions: true } },
+          },
+        });
+        if (linkedEmployee && linkedEmployee.isActive && linkedEmployee.status === 'active' && linkedEmployee.isEmailVerified) {
+          userType = 'employee';
+          req.employeePermissions = linkedEmployee.role?.permissions || [];
+          req.employeeRole = linkedEmployee.role;
+          user.employeeId = linkedEmployee.employeeId;
+        }
+      }
+    }
+
     // Add user info to request
     req.userId = user.id;
     req.user = {
       ...user,
       role: userType
     };
-    
+
     next();
   } catch (error) {
     if (error.name === 'JsonWebTokenError') {
@@ -210,6 +279,28 @@ const optionalAuth = async (req, res, next) => {
             isVerified: partner.isEmailVerified
           };
           userType = 'delivery_partner';
+        }
+      }
+
+      // Check for employee
+      if (!user) {
+        const employee = await prisma.employee.findUnique({
+          where: { id: decoded.userId || decoded.id },
+          select: {
+            id: true, email: true, name: true, status: true,
+            isEmailVerified: true, isActive: true, employeeId: true,
+            role: { select: { id: true, name: true, permissions: true } }
+          }
+        });
+        if (employee) {
+          user = {
+            id: employee.id, email: employee.email, name: employee.name,
+            isActive: employee.isActive && employee.status === 'active',
+            isVerified: employee.isEmailVerified,
+          };
+          userType = 'employee';
+          req.employeePermissions = employee.role?.permissions || [];
+          req.employeeRole = employee.role;
         }
       }
 

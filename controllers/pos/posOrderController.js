@@ -200,7 +200,7 @@ const createPOSOrder = async (req, res) => {
 
     // Send POS order notification to all admins
     try {
-      const { sendToAllAdmins } = require('../../utils/notification/sendNotification');
+      const { sendToAllAdmins, sendToEmployeesByPermission } = require('../../utils/notification/sendNotification');
       
       const adminNotification = {
         title: '🏪 New POS Order!',
@@ -223,7 +223,8 @@ const createPOSOrder = async (req, res) => {
       };
 
       await sendToAllAdmins(adminNotification, adminData);
-      console.log(`📱 POS order notification sent to all admins`);
+      await sendToEmployeesByPermission('pos_billing', adminNotification, adminData);
+      console.log(`📱 POS order notification sent to all admins + employees`);
     } catch (adminNotifError) {
       console.error(`⚠️ Failed to send admin notification:`, adminNotifError.message);
     }

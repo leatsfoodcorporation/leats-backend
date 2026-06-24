@@ -1,5 +1,7 @@
 const express = require("express");
 const router = express.Router();
+const { authenticateToken } = require("../../middleware/auth");
+const { requirePermission } = require("../../middleware/permission");
 const {
   getAllPolicies,
   getPolicyByType,
@@ -9,22 +11,14 @@ const {
   togglePublishPolicy,
 } = require("../../controllers/web/policyController");
 
-// Get all policies
+// Public routes (frontend website)
 router.get("/", getAllPolicies);
-
-// Get single policy by type
 router.get("/type/:type", getPolicyByType);
-
-// Get published policy by slug (public endpoint)
 router.get("/public/:slug", getPublishedPolicyBySlug);
 
-// Create or update policy
-router.post("/", savePolicy);
-
-// Toggle publish status
-router.patch("/:id/publish", togglePublishPolicy);
-
-// Delete policy
-router.delete("/:id", deletePolicy);
+// Dashboard routes - protected
+router.post("/", authenticateToken, requirePermission('web_policies', 'edit'), savePolicy);
+router.patch("/:id/publish", authenticateToken, requirePermission('web_policies', 'edit'), togglePublishPolicy);
+router.delete("/:id", authenticateToken, requirePermission('web_policies', 'delete'), deletePolicy);
 
 module.exports = router;

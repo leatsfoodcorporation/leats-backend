@@ -1,5 +1,7 @@
 const express = require("express");
 const router = express.Router();
+const { authenticateToken } = require("../../middleware/auth");
+const { requirePermission } = require("../../middleware/permission");
 const {
   createCateringServiceEnquiry,
   getAllCateringServiceEnquiries,
@@ -8,13 +10,13 @@ const {
   deleteCateringServiceEnquiry,
 } = require("../../controllers/enquiry/cateringServiceEnquiryController");
 
-// Public route - no authentication required
+// Public route - customer submits enquiry
 router.post("/", createCateringServiceEnquiry);
 
-// Admin routes - authentication required
-router.get("/", getAllCateringServiceEnquiries);
-router.get("/:id", getCateringServiceEnquiryById);
-router.patch("/:id", updateCateringServiceEnquiryStatus);
-router.delete("/:id", deleteCateringServiceEnquiry);
+// Dashboard routes - protected
+router.get("/", authenticateToken, requirePermission('catering_enquiries', 'view'), getAllCateringServiceEnquiries);
+router.get("/:id", authenticateToken, requirePermission('catering_enquiries', 'view'), getCateringServiceEnquiryById);
+router.patch("/:id", authenticateToken, requirePermission('catering_enquiries', 'edit'), updateCateringServiceEnquiryStatus);
+router.delete("/:id", authenticateToken, requirePermission('catering_enquiries', 'delete'), deleteCateringServiceEnquiry);
 
 module.exports = router;

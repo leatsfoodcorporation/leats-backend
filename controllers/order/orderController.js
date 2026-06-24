@@ -4,7 +4,7 @@ const { calculateOrderTotals: calculateGSTTotals } = require("../../utils/order/
 const { getFinancialPeriod } = require("../../utils/finance/financialPeriod");
 const { updateStockAfterOrder } = require("../../utils/inventory/stockUpdateService");
 const { createOnlineTransaction } = require("../../utils/finance/transactionService");
-const { sendOrderPlacedNotification } = require("../../utils/notification/sendNotification");
+const { sendOrderPlacedNotification, sendToEmployeesByPermission } = require("../../utils/notification/sendNotification");
 const { isPincodeServiceable } = require("../../utils/online/serviceability");
 const { sendToAdmin } = require("../../utils/socket/socketHandler");
 
@@ -731,7 +731,8 @@ const createCODOrder = async (req, res) => {
       };
 
       await sendToAllAdmins(adminNotification, adminData);
-      console.log(`📱 New order notification sent to all admins`);
+      await sendToEmployeesByPermission('online_orders', adminNotification, adminData);
+      console.log(`📱 New order notification sent to all admins + employees`);
     } catch (adminNotifError) {
       console.error(`⚠️ Failed to send admin notification:`, adminNotifError.message);
     }
@@ -1111,7 +1112,8 @@ const confirmOrder = async (req, res) => {
       };
 
       await sendToAllAdmins(adminNotification, adminData);
-      console.log(`📱 New order notification sent to all admins`);
+      await sendToEmployeesByPermission('online_orders', adminNotification, adminData);
+      console.log(`📱 New order notification sent to all admins + employees`);
     } catch (adminNotifError) {
       console.error(`⚠️ Failed to send admin notification:`, adminNotifError.message);
     }

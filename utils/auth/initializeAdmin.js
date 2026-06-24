@@ -103,4 +103,33 @@ async function initializeAdmin() {
   }
 }
 
-module.exports = { initializeAdmin };
+/**
+ * Auto-initialize Super Admin role on first server start
+ */
+async function initializeSuperAdminRole() {
+  try {
+    const existing = await prisma.role.findFirst({ where: { isSystemRole: true } });
+    if (existing) {
+      console.log("✅ Super Admin role already exists");
+      return;
+    }
+
+    const { ALL_PERMISSIONS } = require("./permissionConstants");
+
+    await prisma.role.create({
+      data: {
+        name: "Super Admin",
+        description: "Full access to all modules — system role",
+        permissions: ALL_PERMISSIONS,
+        isSystemRole: true,
+        isActive: true,
+      },
+    });
+
+    console.log("✅ Super Admin role created with all permissions");
+  } catch (error) {
+    console.error("⚠️ Failed to initialize Super Admin role:", error.message);
+  }
+}
+
+module.exports = { initializeAdmin, initializeSuperAdminRole };

@@ -166,6 +166,16 @@ const initializeSocket = (server) => {
       console.log("🖥️ Admin joined tracking room");
     });
 
+    // Employee joins with their ID (for permission updates)
+    socket.on("employee:join", (data) => {
+      const { employeeId } = data;
+      if (employeeId) {
+        socket.employeeId = employeeId;
+        socket.join(`employee:${employeeId}`);
+        console.log(`👤 Employee ${employeeId} joined room`);
+      }
+    });
+
     // Handle disconnect
     socket.on("disconnect", async () => {
       console.log(`🔌 Client disconnected: ${socket.id}`);
@@ -212,10 +222,20 @@ const sendToCustomer = (userId, event, data) => {
   }
 };
 
+const sendToEmployee = (employeeId, event, data) => {
+  if (io) {
+    io.to(`employee:${employeeId}`).emit(event, data);
+  }
+};
+
+const getIO = () => io;
+
 module.exports = {
   initializeSocket,
   sendToPartner,
   sendToOrder,
   sendToAdmin,
   sendToCustomer,
+  sendToEmployee,
+  getIO,
 };
