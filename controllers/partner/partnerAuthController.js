@@ -82,7 +82,7 @@ const partnerLogin = async (req, res) => {
     // Update last login and set online status
     await prisma.deliveryPartner.update({
       where: { id: partner.id },
-      data: { 
+      data: {
         lastLogin: new Date(),
         isOnline: true,
         isAvailable: true
@@ -272,21 +272,21 @@ const getPartnerProfile = async (req, res) => {
         gender: true,
         alternateMobileNumber: true,
         profilePhoto: true,
-        
+
         // Address
         address: true,
         city: true,
         state: true,
         pincode: true,
         country: true,
-        
+
         // ID Proof & Verification
         aadharNumber: true,
         aadharDocument: true,
         licenseNumber: true,
         licenseDocument: true,
         idProofDocument: true,
-        
+
         // Vehicle Details
         vehicleType: true,
         vehicleModel: true,
@@ -296,12 +296,12 @@ const getPartnerProfile = async (req, res) => {
         insuranceDocument: true,
         pollutionCertificateValidity: true,
         pollutionCertDocument: true,
-        
+
         // Emergency Contact
         emergencyContactName: true,
         emergencyRelationship: true,
         emergencyContactNumber: true,
-        
+
         // Status & Stats
         applicationStatus: true,
         partnerStatus: true,
@@ -315,14 +315,14 @@ const getPartnerProfile = async (req, res) => {
         todayDeliveries: true,
         weeklyDeliveries: true,
         monthlyDeliveries: true,
-        
+
         // Dates
         joiningDate: true,
         approvedAt: true,
         lastLogin: true,
         createdAt: true,
         updatedAt: true,
-        
+
         // Exclude sensitive data
         password: false,
         emailVerificationToken: false,
@@ -342,26 +342,26 @@ const getPartnerProfile = async (req, res) => {
     // Generate presigned URLs for all documents
     const partnerWithUrls = {
       ...partner,
-      profilePhotoUrl: partner.profilePhoto 
-        ? await getPresignedUrl(partner.profilePhoto, 3600) 
+      profilePhotoUrl: partner.profilePhoto
+        ? await getPresignedUrl(partner.profilePhoto, 3600)
         : null,
-      aadharDocumentUrl: partner.aadharDocument 
-        ? await getPresignedUrl(partner.aadharDocument, 3600) 
+      aadharDocumentUrl: partner.aadharDocument
+        ? await getPresignedUrl(partner.aadharDocument, 3600)
         : null,
-      licenseDocumentUrl: partner.licenseDocument 
-        ? await getPresignedUrl(partner.licenseDocument, 3600) 
+      licenseDocumentUrl: partner.licenseDocument
+        ? await getPresignedUrl(partner.licenseDocument, 3600)
         : null,
-      vehicleRCDocumentUrl: partner.vehicleRCDocument 
-        ? await getPresignedUrl(partner.vehicleRCDocument, 3600) 
+      vehicleRCDocumentUrl: partner.vehicleRCDocument
+        ? await getPresignedUrl(partner.vehicleRCDocument, 3600)
         : null,
-      insuranceDocumentUrl: partner.insuranceDocument 
-        ? await getPresignedUrl(partner.insuranceDocument, 3600) 
+      insuranceDocumentUrl: partner.insuranceDocument
+        ? await getPresignedUrl(partner.insuranceDocument, 3600)
         : null,
-      pollutionCertDocumentUrl: partner.pollutionCertDocument 
-        ? await getPresignedUrl(partner.pollutionCertDocument, 3600) 
+      pollutionCertDocumentUrl: partner.pollutionCertDocument
+        ? await getPresignedUrl(partner.pollutionCertDocument, 3600)
         : null,
-      idProofDocumentUrl: partner.idProofDocument 
-        ? await getPresignedUrl(partner.idProofDocument, 3600) 
+      idProofDocumentUrl: partner.idProofDocument
+        ? await getPresignedUrl(partner.idProofDocument, 3600)
         : null,
     };
 
@@ -420,7 +420,7 @@ const requestPasswordReset = async (req, res) => {
     // Send password reset email
     const webResetUrl = `${process.env.FRONTEND_URL}/partner/reset-password?token=${resetToken}`;
     const mobileResetUrl = `delivery://reset-password?token=${resetToken}`;
-    
+
     const emailData = {
       to: email,
       subject: "Reset Your Password - Delivery Partner Portal",
@@ -526,7 +526,7 @@ const resetPassword = async (req, res) => {
     } else if ((phone || email) && otp) {
       // OTP-based reset (phone or email)
       const identifier = phone || email;
-      
+
       partner = await prisma.deliveryPartner.findFirst({
         where: {
           AND: [
@@ -556,7 +556,7 @@ const resetPassword = async (req, res) => {
         message: "Either token or phone/email+otp is required",
       });
     }
-      
+
 
     // Hash new password
     const hashedPassword = await bcrypt.hash(newPassword, 10);
@@ -668,7 +668,7 @@ const partnerRegister = async (req, res) => {
 
     // Send verification email
     const verificationUrl = `${process.env.FRONTEND_URL}/partner/verify-email?token=${emailVerificationToken}`;
-    
+
     const emailData = {
       to: email,
       subject: "Verify Your Email - Delivery Partner Registration",
@@ -738,7 +738,7 @@ const updatePartnerProfile = async (req, res) => {
     const { name, email, phone, vehicleType, vehicleNumber, profilePhoto } = req.body;
 
     const updateData = {};
-    
+
     if (name) updateData.name = name;
     if (email) updateData.email = email.toLowerCase();
     if (phone) updateData.phone = phone;
@@ -909,7 +909,7 @@ const resendOTP = async (req, res) => {
     if (phone) {
       console.log(`📱 OTP generated for partner phone: ${phone}`);
       const whatsappEnabled = process.env.WHATSAPP_ENABLED === 'true';
-      
+
       setImmediate(async () => {
         try {
           if (whatsappEnabled) {

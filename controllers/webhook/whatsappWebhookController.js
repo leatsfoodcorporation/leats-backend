@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const { whatsappTracker } = require('../../utils/notification/whatsappTracker');
 
 /**
@@ -27,11 +28,68 @@ const verifyWebhook = (req, res) => {
 };
 
 /**
+ * Verify the X-Hub-Signature-256 header from Meta to ensure
+ * the request is authentic and not forged by a third party.
+ *
+ * CRITICAL #2 — Without this check, anyone on the internet can send fake
+ * delivery status events (e.g. fake "delivered") to manipulate the OTP
+ * fallback pipeline and prevent users from receiving their OTPs.
+ *
+ * @param {Buffer} rawBody - The raw, unparsed request body buffer
+ * @param {string} signatureHeader - The value of x-hub-signature-256
+ * @returns {boolean}
+ */
+const verifyMetaSignature = (rawBody, signatureHeader) => {
+  const appSecret = process.env.WHATSAPP_APP_SECRET;
+
+  if (!appSecret) {
+    console.error('❌ WHATSAPP_APP_SECRET is not configured. Cannot verify webhook signature. Rejecting request for safety.');
+    return false;
+  }
+
+  if (!signatureHeader || !signatureHeader.startsWith('sha256=')) {
+    console.warn('⚠️ Missing or malformed x-hub-signature-256 header. Rejecting request.');
+    return false;
+  }
+
+  const receivedSignature = signatureHeader.slice('sha256='.length);
+  const expectedSignature = crypto
+    .createHmac('sha256', appSecret)
+    .update(rawBody)
+    .digest('hex');
+
+  // Use timingSafeEqual to prevent timing-based side-channel attacks
+  try {
+    return crypto.timingSafeEqual(
+      Buffer.from(receivedSignature, 'hex'),
+      Buffer.from(expectedSignature, 'hex')
+    );
+  } catch {
+    return false;
+  }
+};
+
+/**
  * Real-time event receiver endpoint (POST)
  * Meta posts delivery statuses here.
  */
 const receiveWebhookEvent = async (req, res) => {
   try {
+    // CRITICAL #2 — Verify Meta's HMAC signature before processing any payload.
+    // req.rawBody must be populated by a bodyParser rawBody option or equivalent middleware.
+    const signatureHeader = req.headers['x-hub-signature-256'];
+    const rawBody = req.rawBody;
+
+    if (!rawBody) {
+      console.error('❌ req.rawBody is not available. Ensure bodyParser is configured to expose rawBody.');
+      return res.sendStatus(500);
+    }
+
+    if (!verifyMetaSignature(rawBody, signatureHeader)) {
+      console.warn('🚫 Webhook request rejected: invalid or missing signature.');
+      return res.sendStatus(401);
+    }
+
     const body = req.body;
 
     // Verify it is a WhatsApp webhook payload
@@ -66,27 +124,7 @@ const receiveWebhookEvent = async (req, res) => {
   }
 };
 
-/**
- * Debug endpoint to view active tracked messages
- */
-const getTrackedMessages = (req, res) => {
-  try {
-    const tracked = whatsappTracker.getPendingMessages();
-    return res.status(200).json({
-      success: true,
-      count: tracked.length,
-      tracked
-    });
-  } catch (error) {
-    return res.status(500).json({
-      success: false,
-      error: error.message
-    });
-  }
-};
-
 module.exports = {
   verifyWebhook,
-  receiveWebhookEvent,
-  getTrackedMessages
+  receiveWebhookEvent
 };

@@ -12,14 +12,14 @@ const { getPresignedUrl } = require("../../utils/employee/uploadS3");
 const sendEmail = async (emailData) => {
   try {
     console.log("📧 Attempting to send email to:", emailData.to);
-    
+
     // Get active email configuration from database
     const emailConfig = await prisma.emailConfiguration.findFirst({
       where: { isActive: true }
     });
 
     let result;
-    
+
     if (emailConfig) {
       // Use database SMTP configuration
       console.log("📧 Using database SMTP configuration");
@@ -45,7 +45,7 @@ const sendEmail = async (emailData) => {
     } else {
       console.error("❌ Failed to send email:", result.message);
     }
-    
+
     return result;
   } catch (error) {
     console.error("❌ Email sending error:", error);
@@ -68,7 +68,7 @@ const register = async (req, res) => {
   try {
     console.log("📝 Registration request received");
     console.log("📝 Request body:", JSON.stringify(req.body, null, 2));
-    
+
     const { email, password, name, phoneNumber, fcmToken } = req.body;
 
     // Enhanced validation with detailed logging
@@ -136,25 +136,25 @@ const register = async (req, res) => {
 
     // Simple existence check - check each field individually
     console.log("🔍 Checking for existing users...");
-    
+
     // Check email in users
     const userByEmail = await prisma.user.findUnique({
       where: { email }
     });
     console.log("📧 User by email:", userByEmail ? `Found: ${userByEmail.name}` : "Not found");
-    
+
     // Check email in admins
     const adminByEmail = await prisma.admin.findUnique({
       where: { email }
     });
     console.log("📧 Admin by email:", adminByEmail ? `Found: ${adminByEmail.name}` : "Not found");
-    
+
     // Check phone in users
     const userByPhone = await prisma.user.findFirst({
       where: { phoneNumber }
     });
     console.log("📱 User by phone:", userByPhone ? `Found: ${userByPhone.name}` : "Not found");
-    
+
     // Check phone in admins
     const adminByPhone = await prisma.admin.findFirst({
       where: { phoneNumber }
@@ -166,7 +166,7 @@ const register = async (req, res) => {
       let conflictReason = "";
       if (userByEmail || adminByEmail) conflictReason = "email";
       else if (userByPhone || adminByPhone) conflictReason = "phone number";
-      
+
       console.log("❌ Conflict found:", conflictReason);
       return res.status(400).json({
         success: false,
@@ -200,7 +200,7 @@ const register = async (req, res) => {
     if (fcmToken) {
       const device = req.headers['user-agent'] || 'Web App';
       const now = new Date();
-      
+
       userData.fcmTokens = [{
         token: fcmToken,
         device: device,
@@ -215,18 +215,18 @@ const register = async (req, res) => {
     try {
       user = isAdmin
         ? await prisma.admin.create({
-            data: userData,
-          })
+          data: userData,
+        })
         : await prisma.user.create({
-            data: userData,
-          });
+          data: userData,
+        });
       console.log("✅ User created:", user.id);
     } catch (createError) {
       // Handle unique constraint violations
       if (createError.code === 'P2002') {
         const field = createError.meta?.target || 'field';
         console.log(`❌ Unique constraint violation on: ${field}`);
-        
+
         // Return user-friendly message based on which field caused the conflict
         if (field.includes('email')) {
           return res.status(400).json({
@@ -259,7 +259,7 @@ const register = async (req, res) => {
     if (!isAdmin) {
       try {
         console.log("📝 Checking for existing customer record for user:", user.id);
-        
+
         // Check if customer exists with the same email OR phone number
         const existingCustomer = await prisma.customer.findFirst({
           where: {
@@ -377,12 +377,12 @@ const register = async (req, res) => {
   } catch (error) {
     console.error("❌ Registration error:", error);
     console.error("❌ Error stack:", error.stack);
-    
+
     // Handle specific error types
     if (error.code === 'P2002') {
       const field = error.meta?.target || 'field';
       console.log(`❌ Unique constraint violation on: ${field}`);
-      
+
       if (field.includes('email')) {
         return res.status(400).json({
           success: false,
@@ -395,7 +395,7 @@ const register = async (req, res) => {
         });
       }
     }
-    
+
     // Database connection errors
     if (error.message.includes('connect') || error.message.includes('timeout')) {
       return res.status(503).json({
@@ -403,7 +403,7 @@ const register = async (req, res) => {
         error: "Database connection error. Please try again later.",
       });
     }
-    
+
     // Generic error response
     res.status(500).json({
       success: false,
@@ -442,13 +442,13 @@ const login = async (req, res) => {
     if (!user) {
       const employee = isEmail
         ? await prisma.employee.findUnique({
-            where: { email },
-            include: { role: { select: { id: true, name: true, permissions: true } } },
-          })
+          where: { email },
+          include: { role: { select: { id: true, name: true, permissions: true } } },
+        })
         : await prisma.employee.findFirst({
-            where: { phone: email },
-            include: { role: { select: { id: true, name: true, permissions: true } } },
-          });
+          where: { phone: email },
+          include: { role: { select: { id: true, name: true, permissions: true } } },
+        });
 
       if (employee) {
         // Only use Employee login if account is fully active
@@ -637,15 +637,15 @@ const googleCallback = async (req, res) => {
     // Check if user exists in appropriate collection
     let user = isAdmin
       ? await prisma.admin.findFirst({
-          where: {
-            OR: [{ email }, { googleId }],
-          },
-        })
+        where: {
+          OR: [{ email }, { googleId }],
+        },
+      })
       : await prisma.user.findFirst({
-          where: {
-            OR: [{ email }, { googleId }],
-          },
-        });
+        where: {
+          OR: [{ email }, { googleId }],
+        },
+      });
 
     if (user) {
       // Existing user found
@@ -672,69 +672,69 @@ const googleCallback = async (req, res) => {
         isVerified: true, // Safe to set true (already verified or Google user)
         lastLogin: new Date(),
       };
-      
+
       // Handle FCM token if provided (for mobile app)
       if (fcmToken) {
         const device = req.headers['user-agent'] || 'Mobile App';
         const now = new Date();
-        
+
         // Get existing tokens array
         let tokens = Array.isArray(user.fcmTokens) ? user.fcmTokens : [];
-        
+
         // Remove the exact same token if it exists
         tokens = tokens.filter(t => t.token !== fcmToken);
-        
+
         // Add new token to the beginning
         tokens.unshift({
           token: fcmToken,
           device: device,
           lastUsed: now.toISOString(),
         });
-        
+
         // Keep only last 10 devices
         if (tokens.length > 10) {
           tokens = tokens.slice(0, 10);
         }
-        
+
         updateData.fcmTokens = tokens;
         console.log(`📱 FCM token saved for user: ${email} - Total devices: ${tokens.length}`);
       }
-      
+
       // Only update name if user was previously a Google user (not local registration)
       // This preserves the name user chose during registration
       if (user.provider === "google") {
         updateData.name = name;
       }
-      
+
       // Only update image if:
       // 1. User has no image (null) OR
       // 2. User's current image is from Google (contains 'googleusercontent.com' or 'google.com') OR
       // 3. User was previously a Google user
       // This preserves custom uploaded images
       const isGoogleImage = user.image && (
-        user.image.includes('googleusercontent.com') || 
+        user.image.includes('googleusercontent.com') ||
         user.image.includes('google.com') ||
         user.image.includes('lh3.googleusercontent.com')
       );
-      
+
       if (!user.image || isGoogleImage || user.provider === "google") {
         updateData.image = image;
       }
-      
+
       user = isAdmin
         ? await prisma.admin.update({
-            where: { id: user.id },
-            data: updateData,
-          })
+          where: { id: user.id },
+          data: updateData,
+        })
         : await prisma.user.update({
-            where: { id: user.id },
-            data: updateData,
-          });
+          where: { id: user.id },
+          data: updateData,
+        });
       console.log("✅ Existing user updated with Google credentials (name preserved)");
     } else {
       // Create new user in appropriate collection (auto-register)
       console.log("🆕 Auto-registering new Google user:", email);
-      
+
       const createData = {
         email,
         googleId,
@@ -744,12 +744,12 @@ const googleCallback = async (req, res) => {
         isVerified: true, // Google users are auto-verified
         lastLogin: new Date(),
       };
-      
+
       // Handle FCM token if provided (for mobile app)
       if (fcmToken) {
         const device = req.headers['user-agent'] || 'Mobile App';
         const now = new Date();
-        
+
         createData.fcmTokens = [{
           token: fcmToken,
           device: device,
@@ -757,7 +757,7 @@ const googleCallback = async (req, res) => {
         }];
         console.log(`📱 FCM token saved for new Google user: ${email}`);
       }
-      
+
       user = isAdmin
         ? await prisma.admin.create({ data: createData })
         : await prisma.user.create({ data: createData });
@@ -768,27 +768,27 @@ const googleCallback = async (req, res) => {
       if (!isAdmin) {
         try {
           console.log("📝 Checking for existing customer record for Google user:", user.id);
-          
+
           const existingCustomer = await prisma.customer.findUnique({
-             where: { email: user.email }
+            where: { email: user.email }
           });
 
           if (existingCustomer) {
-             console.log("🔗 Customer already exists, linking Google user to existing customer:", existingCustomer.id);
-             const updatedCustomer = await prisma.customer.update({
-                where: { id: existingCustomer.id },
-                data: {
-                   userId: user.id,
-                   image: user.image || existingCustomer.image, // Update image if available
-                   isVerified: true, // Google users are verified
-                   provider: existingCustomer.provider === 'local' ? 'google' : existingCustomer.provider // Update provider if upgrading
-                }
-             });
-             customerId = updatedCustomer.id;
-             console.log("✅ Google user linked to existing customer:", customerId);
+            console.log("🔗 Customer already exists, linking Google user to existing customer:", existingCustomer.id);
+            const updatedCustomer = await prisma.customer.update({
+              where: { id: existingCustomer.id },
+              data: {
+                userId: user.id,
+                image: user.image || existingCustomer.image, // Update image if available
+                isVerified: true, // Google users are verified
+                provider: existingCustomer.provider === 'local' ? 'google' : existingCustomer.provider // Update provider if upgrading
+              }
+            });
+            customerId = updatedCustomer.id;
+            console.log("✅ Google user linked to existing customer:", customerId);
           } else {
-             console.log("📝 Creating customer record for Google user:", user.id);
-             const customer = await prisma.customer.create({
+            console.log("📝 Creating customer record for Google user:", user.id);
+            const customer = await prisma.customer.create({
               data: {
                 userId: user.id,
                 email: user.email,
@@ -829,7 +829,7 @@ const googleCallback = async (req, res) => {
               email: user.email,
               name: user.name
             });
-            
+
             await sendEmail({
               to: user.email,
               subject: emailData.subject,
@@ -943,7 +943,7 @@ const verifyEmail = async (req, res) => {
 
     if (!user) {
       console.log("❌ No user found with this token");
-      
+
       // Token not found - could mean already verified or invalid token
       // Return a generic message that's user-friendly
       console.log("ℹ️ Token not found - likely already verified or expired");
@@ -995,7 +995,7 @@ const verifyEmail = async (req, res) => {
           email: verifiedUser.email,
           name: verifiedUser.name
         });
-        
+
         await sendEmail({
           to: verifiedUser.email,
           subject: emailData.subject,
@@ -1499,7 +1499,7 @@ const updateProfile = async (req, res) => {
       // Sync profile information to Customer collection for regular users
       try {
         console.log("🔄 Syncing user profile to customer collection...");
-        
+
         // Check if customer record exists
         const existingCustomer = await prisma.customer.findUnique({
           where: { userId },
@@ -2199,13 +2199,13 @@ const getUserStats = async (req, res) => {
       const allOrders = [...onlineOrders, ...posOrders];
       const totalOrders = allOrders.length;
       const totalSpent = allOrders.reduce((sum, order) => sum + order.total, 0);
-      const completedOrders = allOrders.filter(order => 
+      const completedOrders = allOrders.filter(order =>
         order.orderStatus === 'delivered' || order.orderStatus === 'completed'
       ).length;
-      const pendingOrders = allOrders.filter(order => 
+      const pendingOrders = allOrders.filter(order =>
         ['pending', 'confirmed', 'processing', 'shipped'].includes(order.orderStatus)
       ).length;
-      const cancelledOrders = allOrders.filter(order => 
+      const cancelledOrders = allOrders.filter(order =>
         order.orderStatus === 'cancelled'
       ).length;
       const averageOrderValue = totalOrders > 0 ? totalSpent / totalOrders : 0;
@@ -2296,13 +2296,13 @@ const deleteAccount = async (req, res) => {
     console.log(`🔍 Processing deletion request for: ${email}`);
 
     // Check if user exists in users table
-    const user = await prisma.user.findUnique({ 
+    const user = await prisma.user.findUnique({
       where: { email },
       select: { id: true, name: true, email: true }
     });
 
     // Check if user exists in admins table
-    const admin = await prisma.admin.findUnique({ 
+    const admin = await prisma.admin.findUnique({
       where: { email },
       select: { id: true, name: true, email: true }
     });
@@ -2319,7 +2319,7 @@ const deleteAccount = async (req, res) => {
     // Delete user and related records
     if (user) {
       console.log(`👤 Found user: ${user.name} (${user.id})`);
-      
+
       // Delete related customer record first
       const customer = await prisma.customer.findUnique({ where: { email } });
       if (customer) {
@@ -2345,7 +2345,7 @@ const deleteAccount = async (req, res) => {
     // Delete admin record
     if (admin) {
       console.log(`👑 Found admin: ${admin.name} (${admin.id})`);
-      
+
       // Delete admin working hours
       await prisma.workingHour.deleteMany({ where: { adminId: admin.id } });
       deletedRecords.push('working_hours');
@@ -2379,7 +2379,7 @@ const deleteAccount = async (req, res) => {
             </div>
           `,
         };
-        
+
         await sendEmail(emailData);
         console.log(`📧 Deletion confirmation email sent to: ${email}`);
       } catch (emailError) {
