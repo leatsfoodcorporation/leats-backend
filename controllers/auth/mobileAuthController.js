@@ -1,4 +1,4 @@
-const bcrypt = require("bcrypt");
+const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
 const { prisma } = require("../../config/database");
@@ -11,14 +11,14 @@ const { sendWhatsAppOTP } = require("../../utils/notification/whatsappService");
 const sendEmail = async (emailData) => {
   try {
     console.log("📧 Attempting to send email to:", emailData.to);
-    
+
     // Get active email configuration from database
     const emailConfig = await prisma.emailConfiguration.findFirst({
       where: { isActive: true }
     });
 
     let result;
-    
+
     if (emailConfig) {
       // Use database SMTP configuration
       console.log("📧 Using database SMTP configuration");
@@ -44,7 +44,7 @@ const sendEmail = async (emailData) => {
     } else {
       console.error("❌ Failed to send email:", result.message);
     }
-    
+
     return result;
   } catch (error) {
     console.error("❌ Email sending error:", error);
@@ -68,14 +68,14 @@ const generateOTP = () => {
 const validateOTP = (inputOTP, storedOTPs, context = 'general') => {
   console.log(`🔍 [${context.toUpperCase()}] === STARTING OTP VALIDATION ===`);
   console.log(`🔍 [${context.toUpperCase()}] Input OTP: "${inputOTP}" (type: ${typeof inputOTP})`);
-  
+
   if (!inputOTP || typeof inputOTP !== 'string' || inputOTP.length !== 6 || !/^\d{6}$/.test(inputOTP)) {
     console.log(`❌ [${context.toUpperCase()}] Invalid OTP format - Length: ${inputOTP?.length}, Type: ${typeof inputOTP}, IsDigits: ${/^\d{6}$/.test(inputOTP || '')}`);
     return { valid: false, error: 'Invalid OTP format. Must be 6 digits.' };
   }
 
   const otpArray = Array.isArray(storedOTPs) ? storedOTPs : [];
-  
+
   if (otpArray.length === 0) {
     console.log(`❌ [${context.toUpperCase()}] No OTPs found in database`);
     return { valid: false, error: 'No OTP found. Please request a new OTP.' };
@@ -97,7 +97,7 @@ const validateOTP = (inputOTP, storedOTPs, context = 'general') => {
   for (let i = otpArray.length - 1; i >= 0; i--) {
     const otpEntry = otpArray[i];
     const expiryDate = new Date(otpEntry.expiresAt);
-    
+
     console.log(`🔍 [${context.toUpperCase()}] Checking OTP #${i}:`);
     console.log(`   - Stored: "${otpEntry.otp}" (type: ${typeof otpEntry.otp})`);
     console.log(`   - Input:  "${inputOTP}" (type: ${typeof inputOTP})`);
@@ -121,7 +121,7 @@ const validateOTP = (inputOTP, storedOTPs, context = 'general') => {
       console.log(`⏰ [${context.toUpperCase()}] OTP EXPIRED: ${expiredOTP.otp}`);
       return { valid: false, error: 'OTP has expired. Please request a new OTP.', expired: true };
     }
-    
+
     console.log(`❌ [${context.toUpperCase()}] INVALID OTP: ${inputOTP} - No matching OTP found`);
     return { valid: false, error: 'Invalid OTP. Please check and try again.' };
   }
@@ -248,7 +248,7 @@ const mobileRegister = async (req, res) => {
     if (!isAdmin) {
       try {
         console.log("📝 Checking for existing customer record for user:", user.id);
-        
+
         const existingCustomer = await prisma.customer.findFirst({
           where: {
             OR: [
@@ -310,30 +310,64 @@ const mobileRegister = async (req, res) => {
       `,
     };
 
-    // Send response immediately
+    // Send OTP via email and WhatsApp (if enabled)
+    const whatsappEnabled = process.env.WHATSAPP_ENABLED === 'true';
+    let otpChannel = 'email';
+    let emailSent = false;
+    let whatsappSent = false;
+
+    // Send Email OTP
+    try {
+      await sendEmail(emailData);
+      emailSent = true;
+      console.log(`✅ OTP email sent to: ${email}`);
+    } catch (emailErr) {
+      console.error("❌ Failed to send OTP email:", emailErr);
+    }
+
+    // Send WhatsApp OTP if enabled and phone number exists
+    if (whatsappEnabled && phoneNumber) {
+      try {
+        const wsResult = await sendWhatsAppOTP(phoneNumber, otp);
+        if (wsResult && wsResult.success) {
+          whatsappSent = true;
+          otpChannel = 'both';
+          console.log(`✅ WhatsApp OTP sent to: ${phoneNumber}`);
+        } else {
+          console.log('⚠️ WhatsApp OTP dispatch failed');
+        }
+      } catch (dispatchErr) {
+        console.error("❌ Failed to send WhatsApp OTP:", dispatchErr);
+      }
+    }
+
+    // Fallback: Ensure at least one was sent successfully
+    if (!emailSent && !whatsappSent) {
+      try {
+        await sendEmail(emailData);
+        emailSent = true;
+        console.log(`✅ Emergency fallback OTP email sent to: ${email}`);
+      } catch (err) {
+        console.error("❌ Emergency fallback OTP email also failed:", err);
+      }
+    }
+
     res.status(201).json({
       success: true,
-      message: "Registration successful. Please check your email for OTP to verify your account.",
+      message: otpChannel === 'both'
+        ? "Registration successful. OTP sent to your WhatsApp and registered email."
+        : "Registration successful. OTP sent to your registered email.",
       data: {
         id: user.id,
         email: user.email,
         name: user.name,
         role: isAdmin ? "admin" : "user",
+        otpChannel,
         otpSent: true,
       },
     });
 
-    // Send email after response (non-blocking)
-    setImmediate(async () => {
-      try {
-        await sendEmail(emailData);
-        console.log(`✅ OTP email sent to: ${email}`);
-      } catch (err) {
-        console.error("Failed to send OTP email:", err);
-      }
-    });
-
-    // Send new user registration notification to admins (only for non-admin users)
+    // Admin registration alert is non-critical — keep fire-and-forget
     if (!isAdmin) {
       setImmediate(async () => {
         try {
@@ -397,7 +431,7 @@ const verifyOTP = async (req, res) => {
 
     // Verify OTP with strict validation
     const otpValidation = validateOTP(otp, user.emailOTPs, 'registration-verify');
-    
+
     if (!otpValidation.valid) {
       return res.status(400).json({
         success: false,
@@ -564,23 +598,41 @@ const resendOTP = async (req, res) => {
       `,
     };
 
+    const whatsappEnabled = process.env.WHATSAPP_ENABLED === 'true';
+    const hasPhone = !!user.phoneNumber;
+
     // Send response immediately
     res.json({
       success: true,
-      message: "New OTP sent to your email",
+      message: whatsappEnabled && hasPhone
+        ? "New OTP sent to your email and WhatsApp"
+        : "New OTP sent to your email",
       data: {
         email: user.email,
         otpSent: true,
       },
     });
 
-    // Send email after response (non-blocking)
+    // Send email and WhatsApp after response (non-blocking)
     setImmediate(async () => {
       try {
         await sendEmail(emailData);
         console.log(`✅ Resend OTP email sent to: ${email}`);
       } catch (err) {
         console.error("Failed to send resend OTP email:", err);
+      }
+
+      if (whatsappEnabled && user.phoneNumber) {
+        try {
+          const wsResult = await sendWhatsAppOTP(user.phoneNumber, otp);
+          if (wsResult && wsResult.success) {
+            console.log(`✅ Resend OTP WhatsApp sent to: ${user.phoneNumber}`);
+          } else {
+            console.log("⚠️ Resend OTP WhatsApp dispatch failed");
+          }
+        } catch (wsErr) {
+          console.error("Failed to send resend OTP WhatsApp:", wsErr);
+        }
       }
     });
   } catch (error) {
@@ -778,24 +830,33 @@ const sendOTPByPhone = async (req, res) => {
       });
     }
 
-    // Generate OTP
-    const otp = generateOTP();
-    const otpExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
-
     // Get existing OTP array
     const existingOTPs = Array.isArray(user.emailOTPs) ? user.emailOTPs : [];
+    const now = new Date();
 
-    // Add new OTP to array (keep last 5 OTPs for history)
+    // Find the latest valid OTP that was already generated (e.g. for email)
+    const validExistingOTP = existingOTPs.slice().reverse().find(
+      (entry) => new Date(entry.expiresAt) > now
+    );
+
+    // HIGH #4 / CRITICAL #3 — Always generate a fresh OTP.
+    // We NEVER reuse an existing OTP regardless of whether a valid one already exists in the
+    // database. Reuse creates a cross-channel attack vector: an OTP originally sent over email
+    // could be silently reused when the user requests OTP via WhatsApp.
+    const otp = generateOTP();
+    const otpExpiry = new Date(now.getTime() + 10 * 60 * 1000); // 10 minutes
+
+    // Add new OTP to array (keep last 5 for audit; only the freshest valid one will be matched)
     const updatedOTPs = [
-      ...existingOTPs.slice(-4), // Keep last 4 OTPs
+      ...existingOTPs.slice(-4), // Keep last 4
       {
         otp,
         expiresAt: otpExpiry.toISOString(),
-        createdAt: new Date().toISOString(),
+        createdAt: now.toISOString(),
       }
     ];
 
-    // Update user with new OTP
+    // Persist the new OTP to the database
     if (userType === "admin") {
       await prisma.admin.update({
         where: { id: user.id },
@@ -832,35 +893,66 @@ const sendOTPByPhone = async (req, res) => {
       `,
     };
 
-    // Send response immediately
+    // HIGH #4 — Dispatch the OTP BEFORE responding so we can tell the user exactly
+    // which channel was used. Responding first and sending in the background means
+    // the user is told "sent to WhatsApp" even if WhatsApp fails and we silently
+    // fall back to email — causing them to never check their inbox.
+    let deliveredVia = 'email';
+    let emailSent = false;
+    let whatsappSent = false;
+
+    // Send Email
+    try {
+      await sendEmail(emailData);
+      emailSent = true;
+      console.log(`✅ OTP email sent to: ${user.email}`);
+    } catch (emailErr) {
+      console.error("❌ Failed to send OTP email:", emailErr);
+    }
+
+    // Send WhatsApp if enabled
+    if (whatsappEnabled) {
+      try {
+        const wsResult = await sendWhatsAppOTP(phoneNumber, otp);
+        if (wsResult && wsResult.success) {
+          whatsappSent = true;
+          deliveredVia = 'both';
+          console.log(`✅ WhatsApp OTP sent to: ${phoneNumber}`);
+        } else {
+          console.log('⚠️ WhatsApp OTP dispatch failed');
+        }
+      } catch (dispatchErr) {
+        console.error("❌ Failed to send WhatsApp OTP:", dispatchErr);
+      }
+    }
+
+    // Ensure at least one was sent successfully
+    if (!emailSent && !whatsappSent) {
+      try {
+        await sendEmail(emailData);
+        emailSent = true;
+        console.log(`✅ Emergency fallback OTP email sent to: ${user.email}`);
+      } catch (emailErr) {
+        console.error("❌ Emergency fallback email also failed:", emailErr);
+        return res.status(500).json({
+          success: false,
+          error: "Failed to send OTP. Please try again.",
+        });
+      }
+    }
+
+    // Respond after dispatch — channel is now confirmed
     res.json({
       success: true,
-      message: whatsappEnabled ? "OTP sent to your WhatsApp number" : "OTP sent to your registered email",
+      message: deliveredVia === 'both'
+        ? "OTP sent to your WhatsApp number and registered email"
+        : "OTP sent to your registered email",
       data: {
         phoneNumber,
-        email: whatsappEnabled ? undefined : user.email.replace(/(.{2})(.*)(@.*)/, "$1***$3"), // Masked email
-        whatsappSent: whatsappEnabled,
+        channel: deliveredVia,
+        email: user.email.replace(/(.{2})(.*)(@.*)/, "$1***$3"), // Masked email is always shown since it was sent to email
         otpSent: true,
       },
-    });
-
-    // Send dispatch after response (non-blocking)
-    setImmediate(async () => {
-      try {
-        if (whatsappEnabled) {
-          const wsResult = await sendWhatsAppOTP(phoneNumber, otp);
-          if (!wsResult.success) {
-            console.log('⚠️ WhatsApp OTP dispatch failed, falling back to Email OTP');
-            await sendEmail(emailData);
-            console.log(`✅ Fallback OTP email sent to: ${user.email}`);
-          }
-        } else {
-          await sendEmail(emailData);
-          console.log(`✅ OTP email sent to: ${user.email}`);
-        }
-      } catch (err) {
-        console.error("Failed to send OTP:", err);
-      }
     });
   } catch (error) {
     console.error("Send OTP by phone error:", error);
@@ -954,7 +1046,7 @@ const verifyOTPByPhone = async (req, res) => {
     await sessionManager.addSession(user.id, token);
 
     // Update last login
-    const updateData = { 
+    const updateData = {
       lastLogin: new Date(),
       emailOTPs: [], // Clear OTPs after successful verification
     };
@@ -1204,23 +1296,41 @@ const mobileForgotPassword = async (req, res) => {
       `,
     };
 
+    const whatsappEnabled = process.env.WHATSAPP_ENABLED === 'true';
+    const hasPhone = !!user.phoneNumber;
+
     // Send response immediately
     res.json({
       success: true,
-      message: "Password reset OTP sent to your email",
+      message: whatsappEnabled && hasPhone
+        ? "Password reset OTP sent to your email and WhatsApp"
+        : "Password reset OTP sent to your email",
       data: {
         email: email,
         otpSent: true,
       },
     });
 
-    // Send email after response (non-blocking)
+    // Send email and WhatsApp after response (non-blocking)
     setImmediate(async () => {
       try {
         await sendEmail(emailData);
         console.log(`✅ Password reset OTP email sent to: ${email}`);
       } catch (err) {
         console.error("Failed to send password reset OTP email:", err);
+      }
+
+      if (whatsappEnabled && user.phoneNumber) {
+        try {
+          const wsResult = await sendWhatsAppOTP(user.phoneNumber, otp);
+          if (wsResult && wsResult.success) {
+            console.log(`✅ Password reset OTP WhatsApp sent to: ${user.phoneNumber}`);
+          } else {
+            console.log("⚠️ Password reset OTP WhatsApp dispatch failed");
+          }
+        } catch (wsErr) {
+          console.error("Failed to send password reset OTP WhatsApp:", wsErr);
+        }
       }
     });
   } catch (error) {
@@ -1282,7 +1392,7 @@ const resetPasswordEmailOTP = async (req, res) => {
 
     // Verify OTP with strict validation
     const otpValidation = validateOTP(otp, user.emailOTPs, 'reset-password');
-    
+
     if (!otpValidation.valid) {
       console.log("❌ OTP validation failed:", otpValidation.error);
       return res.status(400).json({
@@ -1372,7 +1482,7 @@ const verifyResetOTP = async (req, res) => {
 
     // Verify OTP with strict validation
     const otpValidation = validateOTP(otp, user.emailOTPs, 'verify-reset-otp');
-    
+
     if (!otpValidation.valid) {
       console.log("❌ OTP validation failed:", otpValidation.error);
       return res.status(400).json({

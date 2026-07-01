@@ -38,11 +38,23 @@ const sendWhatsAppOTP = async (phoneNumber, otp) => {
     } else if (provider === 'twilio') {
       return await sendViaTwilioREST(formattedPhone, otp);
     } else if (provider === 'mock') {
+      // HIGH #6 — Strictly reject mock mode in production.
+      // If WHATSAPP_PROVIDER=mock reaches production (e.g. via a copied .env file),
+      // the system would silently print OTPs to logs and return success:true, which:
+      //   a) leaks all OTPs to anyone with log access (CloudWatch, Datadog, etc.)
+      //   b) prevents any SMS/email fallback from triggering because the call "succeeds"
+      //   c) means every user is silently unable to receive their OTP
+      if (process.env.NODE_ENV === 'production') {
+        const errMsg = 'WHATSAPP_PROVIDER=mock is not permitted in production. Check your environment configuration.';
+        console.error(`🚨 [SECURITY] ${errMsg}`);
+        return { success: false, error: errMsg };
+      }
+
       const messageId = `wamid.mock_${Date.now()}`;
       console.log(`🧪 [Mock-WhatsApp-Log] OTP for ${formattedPhone}: ${otp}. Registered with messageId: ${messageId}`);
       try {
         const { whatsappTracker } = require('./whatsappTracker');
-        whatsappTracker.register(messageId, formattedPhone, otp);
+        await whatsappTracker.register(messageId, formattedPhone, otp);
       } catch (trackerErr) {
         console.error('⚠️ Failed to register message with WhatsApp tracker:', trackerErr.message);
       }
@@ -120,7 +132,7 @@ const sendViaMetaCloudAPI = async (phoneNumber, otp) => {
     
     try {
       const { whatsappTracker } = require('./whatsappTracker');
-      whatsappTracker.register(messageId, phoneNumber, otp);
+      await whatsappTracker.register(messageId, phoneNumber, otp);
     } catch (trackerErr) {
       console.error('⚠️ Failed to register message with WhatsApp tracker:', trackerErr.message);
     }
