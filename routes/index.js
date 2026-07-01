@@ -106,6 +106,9 @@ const orderScheduleRoutes = require('./settings/orderScheduleRoutes');
 const bulkOrderEnquiryRoutes = require('./enquiry/bulkOrderEnquiryRoutes');
 const cateringServiceEnquiryRoutes = require('./enquiry/cateringServiceEnquiryRoutes');
 
+// Webhook routes
+const whatsappWebhookRoutes = require('./webhooks/whatsappWebhookRoutes');
+
 const router = express.Router();
 
 // Root route - API information
@@ -255,5 +258,8 @@ router.use('/purchase/reports', purchaseReportRoutes);
 // Enquiry routes
 router.use('/enquiry/bulk-order', bulkOrderEnquiryRoutes);
 router.use('/enquiry/catering-service', cateringServiceEnquiryRoutes);
+
+// Webhook routes
+router.use('/webhooks', whatsappWebhookRoutes);
 
 module.exports = router;

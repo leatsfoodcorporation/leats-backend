@@ -8,7 +8,7 @@ const { prisma } = require("../../config/database");
 async function initializeAdmin() {
   try {
     console.log("🔍 Checking admin initialization...");
-    
+
     const adminEmail = process.env.ADMIN_EMAIL;
     const adminPassword = process.env.ADMIN_PASSWORD;
 
@@ -82,9 +82,9 @@ async function initializeAdmin() {
 
       console.log("✅ Default working hours configured");
     }
-    
+
     console.log(`📧 Email: ${adminEmail}`);
-    
+
     return { success: true, message: "Admin created successfully", admin: adminUser };
   } catch (error) {
     console.error("❌ Error initializing admin user:");
@@ -97,7 +97,7 @@ async function initializeAdmin() {
       console.error("   Error meta:", JSON.stringify(error.meta, null, 2));
     }
     console.error("   Stack trace:", error.stack);
-    
+
     // Return error info instead of throwing
     return { success: false, message: error.message, error };
   }

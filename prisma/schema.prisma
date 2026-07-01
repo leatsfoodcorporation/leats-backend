@@ -132,6 +132,23 @@ model Session {
   @@map("sessions")
 }
 
+// Persisted WhatsApp OTP message tracker
+// HIGH #5 — Replaces the in-memory Map in whatsappTracker.js so delivery tracking
+// survives server restarts and works correctly across multiple server instances
+// (e.g. when load-balanced). The background poller reads from here.
+model TrackedMessage {
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  messageId    String   @unique          // WhatsApp message ID (wamid.XXX)
+  phoneNumber  String                    // Recipient phone number
+  otp          String                    // OTP code being tracked
+  status       String   @default("sent") // sent | delivered | read | failed
+  registeredAt DateTime @default(now())  // When tracking started
+
+  @@index([status])
+  @@index([registeredAt])
+  @@map("tracked_messages")
+}
+
 // Delivery Partner Authentication
 model DeliveryPartner {
   id                  String    @id @default(auto()) @map("_id") @db.ObjectId

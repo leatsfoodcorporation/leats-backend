@@ -15,14 +15,14 @@ getFirebaseAdmin();
 const sendEmail = async (emailData) => {
   try {
     console.log("📧 Attempting to send email to:", emailData.to);
-    
+
     // Get active email configuration from database
     const emailConfig = await prisma.emailConfiguration.findFirst({
       where: { isActive: true }
     });
 
     let result;
-    
+
     if (emailConfig) {
       // Use database SMTP configuration
       console.log("📧 Using database SMTP configuration");
@@ -48,7 +48,7 @@ const sendEmail = async (emailData) => {
     } else {
       console.error("❌ Failed to send email:", result.message);
     }
-    
+
     return result;
   } catch (error) {
     console.error("❌ Email sending error:", error);
@@ -243,7 +243,7 @@ const phoneRegister = async (req, res) => {
           email: user.email,
           name: user.name
         });
-        
+
         await sendEmail({
           to: user.email,
           subject: emailData.subject,
@@ -323,7 +323,7 @@ const phoneLogin = async (req, res) => {
     }
 
     // Update last login and FCM token
-    const updateData = { 
+    const updateData = {
       lastLogin: new Date(),
       firebaseUid: decodedToken.uid, // Update Firebase UID
     };

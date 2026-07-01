@@ -181,7 +181,7 @@ async function sendRegistrationSubmittedEmail(partner) {
  */
 const createDeliveryPartner = async (req, res) => {
   let uploadedFiles = {};
-  
+
   try {
     const {
       name,
@@ -285,7 +285,7 @@ const createDeliveryPartner = async (req, res) => {
     }
 
     const initialStatus = applicationStatus || "pending";
-    
+
     if (!["pending", "verified", "approved", "rejected"].includes(initialStatus)) {
       return res.status(400).json({
         success: false,
@@ -294,11 +294,11 @@ const createDeliveryPartner = async (req, res) => {
     }
 
     const tempId = `temp-${Date.now()}`;
-    
+
     // Handle file uploads if present
     if (req.files) {
       console.log("📤 Uploading documents to S3...");
-      
+
       if (req.files.profilePhoto) {
         uploadedFiles.profilePhoto = await uploadProfilePhotoToS3(req.files.profilePhoto[0], tempId);
       }
@@ -351,12 +351,12 @@ const createDeliveryPartner = async (req, res) => {
     // If status is approved, create credentials
     if (initialStatus === "approved") {
       const partnerId = await generatePartnerId();
-      
+
       // Use admin-provided password if available, otherwise auto-generate
-      const password = adminProvidedPassword && adminProvidedPassword.trim() 
-        ? adminProvidedPassword.trim() 
+      const password = adminProvidedPassword && adminProvidedPassword.trim()
+        ? adminProvidedPassword.trim()
         : generatePassword();
-      
+
       const hashedPassword = await bcrypt.hash(password, 10);
       const emailVerificationToken = crypto.randomBytes(32).toString("hex");
 
@@ -408,7 +408,7 @@ const createDeliveryPartner = async (req, res) => {
 
     // Send registration confirmation email for pending applications
     if (initialStatus === "pending") {
-      sendRegistrationSubmittedEmail(deliveryPartner).catch(() => {});
+      sendRegistrationSubmittedEmail(deliveryPartner).catch(() => { });
     }
 
     res.status(201).json({
@@ -418,7 +418,7 @@ const createDeliveryPartner = async (req, res) => {
     });
   } catch (error) {
     console.error("Error creating delivery partner:", error);
-    
+
     if (Object.keys(uploadedFiles).length > 0) {
       console.log("🧹 Cleaning up uploaded files due to error...");
       for (const fileKey of Object.values(uploadedFiles)) {
@@ -429,7 +429,7 @@ const createDeliveryPartner = async (req, res) => {
         }
       }
     }
-    
+
     res.status(500).json({
       success: false,
       message: "Failed to create delivery partner",
@@ -486,26 +486,26 @@ const getAllDeliveryPartners = async (req, res) => {
       deliveryPartners.map(async (partner) => ({
         ...partner,
         password: undefined,
-        profilePhotoUrl: partner.profilePhoto 
-          ? await getPresignedUrl(partner.profilePhoto, 3600) 
+        profilePhotoUrl: partner.profilePhoto
+          ? await getPresignedUrl(partner.profilePhoto, 3600)
           : null,
-        aadharDocumentUrl: partner.aadharDocument 
-          ? await getPresignedUrl(partner.aadharDocument, 3600) 
+        aadharDocumentUrl: partner.aadharDocument
+          ? await getPresignedUrl(partner.aadharDocument, 3600)
           : null,
-        licenseDocumentUrl: partner.licenseDocument 
-          ? await getPresignedUrl(partner.licenseDocument, 3600) 
+        licenseDocumentUrl: partner.licenseDocument
+          ? await getPresignedUrl(partner.licenseDocument, 3600)
           : null,
-        vehicleRCDocumentUrl: partner.vehicleRCDocument 
-          ? await getPresignedUrl(partner.vehicleRCDocument, 3600) 
+        vehicleRCDocumentUrl: partner.vehicleRCDocument
+          ? await getPresignedUrl(partner.vehicleRCDocument, 3600)
           : null,
-        insuranceDocumentUrl: partner.insuranceDocument 
-          ? await getPresignedUrl(partner.insuranceDocument, 3600) 
+        insuranceDocumentUrl: partner.insuranceDocument
+          ? await getPresignedUrl(partner.insuranceDocument, 3600)
           : null,
-        pollutionCertDocumentUrl: partner.pollutionCertDocument 
-          ? await getPresignedUrl(partner.pollutionCertDocument, 3600) 
+        pollutionCertDocumentUrl: partner.pollutionCertDocument
+          ? await getPresignedUrl(partner.pollutionCertDocument, 3600)
           : null,
-        idProofDocumentUrl: partner.idProofDocument 
-          ? await getPresignedUrl(partner.idProofDocument, 3600) 
+        idProofDocumentUrl: partner.idProofDocument
+          ? await getPresignedUrl(partner.idProofDocument, 3600)
           : null,
       }))
     );
@@ -581,26 +581,26 @@ const getDeliveryPartnerById = async (req, res) => {
       password: undefined,
       completedOrdersCount,
       recentCompletedOrders,
-      profilePhotoUrl: deliveryPartner.profilePhoto 
-        ? await getPresignedUrl(deliveryPartner.profilePhoto, 3600) 
+      profilePhotoUrl: deliveryPartner.profilePhoto
+        ? await getPresignedUrl(deliveryPartner.profilePhoto, 3600)
         : null,
-      aadharDocumentUrl: deliveryPartner.aadharDocument 
-        ? await getPresignedUrl(deliveryPartner.aadharDocument, 3600) 
+      aadharDocumentUrl: deliveryPartner.aadharDocument
+        ? await getPresignedUrl(deliveryPartner.aadharDocument, 3600)
         : null,
-      licenseDocumentUrl: deliveryPartner.licenseDocument 
-        ? await getPresignedUrl(deliveryPartner.licenseDocument, 3600) 
+      licenseDocumentUrl: deliveryPartner.licenseDocument
+        ? await getPresignedUrl(deliveryPartner.licenseDocument, 3600)
         : null,
-      vehicleRCDocumentUrl: deliveryPartner.vehicleRCDocument 
-        ? await getPresignedUrl(deliveryPartner.vehicleRCDocument, 3600) 
+      vehicleRCDocumentUrl: deliveryPartner.vehicleRCDocument
+        ? await getPresignedUrl(deliveryPartner.vehicleRCDocument, 3600)
         : null,
-      insuranceDocumentUrl: deliveryPartner.insuranceDocument 
-        ? await getPresignedUrl(deliveryPartner.insuranceDocument, 3600) 
+      insuranceDocumentUrl: deliveryPartner.insuranceDocument
+        ? await getPresignedUrl(deliveryPartner.insuranceDocument, 3600)
         : null,
-      pollutionCertDocumentUrl: deliveryPartner.pollutionCertDocument 
-        ? await getPresignedUrl(deliveryPartner.pollutionCertDocument, 3600) 
+      pollutionCertDocumentUrl: deliveryPartner.pollutionCertDocument
+        ? await getPresignedUrl(deliveryPartner.pollutionCertDocument, 3600)
         : null,
-      idProofDocumentUrl: deliveryPartner.idProofDocument 
-        ? await getPresignedUrl(deliveryPartner.idProofDocument, 3600) 
+      idProofDocumentUrl: deliveryPartner.idProofDocument
+        ? await getPresignedUrl(deliveryPartner.idProofDocument, 3600)
         : null,
     };
 
@@ -624,7 +624,7 @@ const getDeliveryPartnerById = async (req, res) => {
 const updateDeliveryPartner = async (req, res) => {
   let uploadedFiles = {};
   let oldFiles = {};
-  
+
   try {
     const { id } = req.params;
     const updateData = req.body;
@@ -694,7 +694,7 @@ const updateDeliveryPartner = async (req, res) => {
     // Handle file uploads if present
     if (req.files) {
       console.log("📤 Uploading new documents to S3...");
-      
+
       if (req.files.profilePhoto) {
         oldFiles.profilePhoto = existingPartner.profilePhoto;
         uploadedFiles.profilePhoto = await uploadProfilePhotoToS3(req.files.profilePhoto[0], uploadId);
@@ -767,7 +767,7 @@ const updateDeliveryPartner = async (req, res) => {
     });
   } catch (error) {
     console.error("Error updating delivery partner:", error);
-    
+
     if (Object.keys(uploadedFiles).length > 0) {
       console.log("🧹 Cleaning up newly uploaded files due to error...");
       for (const fileKey of Object.values(uploadedFiles)) {
@@ -778,7 +778,7 @@ const updateDeliveryPartner = async (req, res) => {
         }
       }
     }
-    
+
     res.status(500).json({
       success: false,
       message: "Failed to update delivery partner",
@@ -864,7 +864,7 @@ const updateApplicationStatus = async (req, res) => {
     }
 
     const currentStatus = partner.applicationStatus;
-    
+
     if (currentStatus === "verified" && status === "pending") {
       return res.status(400).json({
         success: false,
@@ -890,7 +890,7 @@ const updateApplicationStatus = async (req, res) => {
 
     if (status === "approved") {
       const partnerId = await generatePartnerId();
-      
+
       // Always auto-generate password when approving from status change
       // (Admin can only set custom password during initial creation)
       const password = generatePassword();
@@ -1161,8 +1161,8 @@ const getApprovedPartners = async (req, res) => {
     const partnersWithUrls = await Promise.all(
       partners.map(async (partner) => ({
         ...partner,
-        profilePhotoUrl: partner.profilePhoto 
-          ? await getPresignedUrl(partner.profilePhoto, 3600) 
+        profilePhotoUrl: partner.profilePhoto
+          ? await getPresignedUrl(partner.profilePhoto, 3600)
           : null,
       }))
     );

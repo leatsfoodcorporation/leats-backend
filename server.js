@@ -31,19 +31,19 @@ async function initializeApp() {
       console.log("═══════════════════════════════════════════════════");
       console.log("🚀 Initializing Monolith E-Commerce Backend...");
       console.log("═══════════════════════════════════════════════════");
-      
+
       // Connect to database
       console.log("📡 Connecting to database...");
       await connectDB();
       console.log("✅ Database connected successfully");
-      
+
       // Auto-initialize admin user
       console.log("\n👤 Initializing admin user...");
       try {
         const { initializeAdmin, initializeSuperAdminRole } = require("./utils/auth/initializeAdmin");
         const initResult = await initializeAdmin();
         await initializeSuperAdminRole();
-        
+
         if (initResult.success) {
           console.log("✅ Admin initialization completed successfully");
           if (initResult.admin) {
@@ -62,7 +62,7 @@ async function initializeApp() {
         console.error("   Error:", initError.message);
         console.error("   You can manually initialize admin by visiting: /api/init/admin");
       }
-      
+
       // Initialize Firebase Admin SDK
       console.log("\n🔥 Initializing Firebase Admin SDK...");
       try {
@@ -72,7 +72,7 @@ async function initializeApp() {
         console.error("⚠️ Firebase initialization failed:", firebaseError.message);
         console.log("📱 Push notifications will not be available for mobile users");
       }
-      
+
       // Initialize Delivery Firebase Admin SDK
       console.log("\n🔥 Initializing Delivery Firebase Admin SDK...");
       try {
@@ -82,11 +82,11 @@ async function initializeApp() {
         console.error("⚠️ Delivery Firebase initialization failed:", deliveryFirebaseError.message);
         console.log("📱 Push notifications will not be available for delivery partners");
       }
-      
+
       console.log("═══════════════════════════════════════════════════");
       console.log("✅ Initialization Complete");
       console.log("═══════════════════════════════════════════════════\n");
-      
+
       // Mark as initialized
       isInitialized = true;
       return true;
@@ -94,7 +94,7 @@ async function initializeApp() {
       console.error("❌ Initialization failed:");
       console.error("   Error details:", error.message);
       console.error("   Stack:", error.stack);
-      
+
       // Reset promise so it can be retried
       initializationPromise = null;
       return false;
@@ -139,10 +139,10 @@ app.use(
       if (!origin) {
         return callback(null, true);
       }
-      
+
       // Normalize origin for comparison
       const normalizedOrigin = origin.replace(/\/$/, "");
-      
+
       if (allowedOrigins.includes(normalizedOrigin)) {
         callback(null, true);
       } else {
@@ -160,7 +160,13 @@ app.use(
 );
 
 app.use(cookieParser());
-app.use(express.json({ limit: '10mb' })); // Add size limit for JSON payloads
+// Parse JSON payloads and capture raw body for Meta webhook signature verification (CRITICAL #2)
+app.use(express.json({
+  limit: '10mb',
+  verify: (req, res, buf) => {
+    req.rawBody = buf;
+  }
+}));
 app.use(express.urlencoded({ extended: true, limit: '10mb' })); // Add URL encoded support
 
 // Ensure initialization completes before handling requests (for Vercel)
@@ -193,14 +199,14 @@ app.use(passport.session());
 app.use((req, res, next) => {
   const timestamp = new Date().toISOString();
   console.log(`[${timestamp}] [Monolith] ${req.method} ${req.path}`);
-  
+
   // Log request body for POST requests (excluding sensitive data)
   if (req.method === 'POST' && req.path.includes('/auth/')) {
     const logBody = { ...req.body };
     if (logBody.password) logBody.password = '[REDACTED]';
     console.log(`[${timestamp}] Request body:`, JSON.stringify(logBody, null, 2));
   }
-  
+
   next();
 });
 
@@ -237,7 +243,7 @@ app.use((req, res) => {
 // Error handling middleware
 app.use((err, req, res, next) => {
   console.error("[Monolith Error]", err);
-  
+
   // Ensure CORS headers are present even on errors
   const origin = req.headers.origin;
   if (origin && allowedOrigins.includes(origin.replace(/\/$/, ""))) {
@@ -272,7 +278,7 @@ server.listen(PORT, async () => {
       console.error("⚠️ Cron jobs initialization failed:", cronError.message);
       console.log("📅 Scheduled notifications will not be available");
     }
-    
+
     console.log("═══════════════════════════════════════════════════");
     console.log("✅ Monolith E-Commerce Backend Started Successfully");
     console.log("═══════════════════════════════════════════════════");
